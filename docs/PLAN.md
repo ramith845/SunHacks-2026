@@ -89,7 +89,7 @@ Each module has a fixed interface, so they can be built in separate threads/bran
 | Thread | Owns | Interface it exposes | Can start with |
 |---|---|---|---|
 | **A. Viewer** | `apps/web/src/viewer/` — Three.js scene, Spark splat loading, camera rig, scene picker, recentering | `setCameraPose(q, p, fov)`, `captureThumb()` | A downloaded sample `.spz` |
-| **B. Phone camera + relay** | `apps/web/src/phone/`, `server/relay.ts` — orientation/WebXR capture, REC button, room pairing | Emits pose messages (format above) and `{type:"rec"\|"stop"}` | Logging poses to console |
+| **B. Phone camera + relay** | `apps/web/src/phone/`, `server/relay.ts` — iPhone orientation capture, REC button, room pairing | Emits pose messages (format above) and `{type:"rec"\|"stop"}` | Logging poses to console |
 | **C. Takes + storyboard UI** | `apps/web/src/takes/` — recorder, playback, storyboard strip, shot-list table | `recordTake(poses)`, `TakeStore` (local first, then API) | Fake pose arrays |
 | **D. Backend + AI** | `server/api.ts` — Atlas CRUD, Gemini shot list and critique endpoints | REST: `/takes`, `/shotlist`, `/critique` | curl + Postman |
 | **E. Blender export (stretch)** | `tools/blender/take_to_camera.py` | Reads take JSON → keyframed camera, imports splat | A hand-written take JSON |
