@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pocket Film Set — Director</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body class="director">
+    <canvas id="view"></canvas>
+    <div id="hud">
+      <div class="row">
+        <span id="rec-dot"></span><span id="status">Waiting for phone…</span>
+        <span id="lens">35mm</span>
+      </div>
+    </div>
+    <div id="pair">
+      <canvas id="qr"></canvas>
+      <div>Scan with the iPhone camera<br /><code id="url"></code></div>
+    </div>
+    <div id="help">
+      Drop a <b>.spz</b> / <b>.ply</b> scan anywhere · <b>R</b> record · <b>F</b> flip scene · <b>WASD/QE</b> move · drag to look · <b>H</b> hide this
+    </div>
+    <div id="strip"></div>
+    <script type="module" src="/src/director.ts"></script>
+  </body>
+</html>

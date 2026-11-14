@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+    <title>Pocket Film Set — Camera</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body class="phone">
+    <button id="start">Tap to start camera</button>
+    <div id="ui" hidden>
+      <div id="conn">Connecting…</div>
+      <div class="lens">
+        <label>Lens <b id="mm">35mm</b></label>
+        <input id="lens" type="range" min="14" max="135" value="35" />
+      </div>
+      <div class="pads">
+        <div class="pad">
+          <button data-move="0,0,1">▲<small>push in</small></button>
+          <div>
+            <button data-move="-1,0,0">◀</button>
+            <button data-move="1,0,0">▶</button>
+          </div>
+          <button data-move="0,0,-1">▼<small>pull out</small></button>
+        </div>
+        <div class="pad">
+          <button data-move="0,1,0">⤒<small>crane up</small></button>
+          <button id="mark">Set mark</button>
+          <button data-move="0,-1,0">⤓<small>crane down</small></button>
+        </div>
+      </div>
+      <button id="rec">● REC</button>
+    </div>
+    <script type="module" src="/src/phone.ts"></script>
+  </body>
+</html>
