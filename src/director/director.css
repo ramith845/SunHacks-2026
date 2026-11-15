@@ -119,3 +119,7 @@ body.playing #playhead { display: block; }
 .cal-title { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); }
 #cal-text { font-size: 16px; font-weight: 600; max-width: 360px; }
 #cal-ang { font: 700 28px var(--mono); color: var(--accent); }
+#diag { font: 12px/1.5 var(--mono); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px; margin: 0; white-space: pre; overflow-x: auto; }
+#diag.bad { border-color: var(--rec); color: #ff8a82; }
+#hud-src.warn { color: var(--rec); }
+#cal-hint { color: #ff8a82; max-width: 360px; font-size: 12px; }

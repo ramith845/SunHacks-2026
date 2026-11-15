@@ -161,6 +161,7 @@ const now = () => performance.now();
 const arLive = () => now() - arLast < 600;
 const gyroLive = () => now() - gyroLast < 1000;
 const source = () => (arLive() ? `AR 6DoF · ${arSrc}` : gyroLive() ? "GYRO 3DoF" : "MOUSE");
+const sourceHud = () => (posFrozen() ? `${arSrc} · ROTATION ONLY (no position)` : source());
 
 function setMark(silent = false, yaw?: number) {
   // Whatever the camera shows right now becomes the start of the real-world move.
@@ -197,8 +198,26 @@ const saveCalibration = () => {
 const rawQ = new THREE.Quaternion(); // latest uncalibrated orientation of the active source
 let rawSrc = "";
 
+// ---- diagnostics: is position actually arriving and changing? ----
+const diag = { packets: 0, pps: 0, lastTick: 0, lastMove: 0, turned: 0, lastQ: new THREE.Quaternion(), lastP: new THREE.Vector3(), warned: false, freed: null as FreeDMsg | null };
+const posFrozen = () => arLive() && now() - diag.lastMove > 4000 && diag.turned > 40;
+function trackDiag(p: Vec3, q: Quat) {
+  diag.packets++;
+  const t = now();
+  if (t - diag.lastTick > 1000) (diag.pps = Math.round((diag.packets * 1000) / (t - diag.lastTick))), (diag.packets = 0), (diag.lastTick = t);
+  const P = new THREE.Vector3().fromArray(p), Q = new THREE.Quaternion().fromArray(q);
+  if (P.distanceTo(diag.lastP) > 0.002) (diag.lastMove = t), diag.lastP.copy(P), (diag.turned = 0), (diag.warned = false);
+  const a = THREE.MathUtils.radToDeg(Q.angleTo(diag.lastQ));
+  if (a > 1) (diag.turned += a), diag.lastQ.copy(Q);
+  if (posFrozen() && !diag.warned) {
+    diag.warned = true;
+    toast("Rotation is arriving but position isn't changing. In FREED Tracker: allow Camera access, turn on X/Y/Z output, release Hold Position. See Setup.", 12000);
+  }
+}
+
 let arSrc = "";
 function onAr(p: Vec3, qRaw: Quat, src: string) {
+  trackDiag(p, qRaw);
   rawQ.fromArray(qRaw);
   rawSrc = src;
   const q = rawQ.clone().multiply(calOf(src)).toArray() as Quat;
@@ -222,13 +241,13 @@ const CAL_STEPS: CalStep[] = [
   { text: "Turn the phone RIGHT about 45° (like panning) and hold", test: (a) => a > 30 },
   { text: "Point at the screen again, take one big step TOWARD it, and hold", test: () => !!cal && rawP.distanceTo(cal.p0) > 0.35 },
 ];
-let cal: { step: number; ref: THREE.Quaternion; q0: THREE.Quaternion; tiltAxis?: THREE.Vector3; stableSince: number; last: THREE.Quaternion; p0: THREE.Vector3; lastP: THREE.Vector3 } | null = null;
+let cal: { step: number; ref: THREE.Quaternion; q0: THREE.Quaternion; tiltAxis?: THREE.Vector3; stableSince: number; last: THREE.Quaternion; p0: THREE.Vector3; lastP: THREE.Vector3; stepStart: number } | null = null;
 function startCalibration() {
   if (!arLive() && !gyroLive()) return toast("Start your tracking app (or the phone page) first, then calibrate");
   calYaw = yawOf(camera.quaternion);
   calPos.copy(camera.position);
   neutral = null;
-  cal = { step: 0, ref: rawQ.clone(), q0: rawQ.clone(), stableSince: now(), last: rawQ.clone(), p0: rawP.clone(), lastP: rawP.clone() };
+  cal = { step: 0, ref: rawQ.clone(), q0: rawQ.clone(), stableSince: now(), last: rawQ.clone(), p0: rawP.clone(), lastP: rawP.clone(), stepStart: now() };
   $("cal").hidden = false;
 }
 const localAxis = (from: THREE.Quaternion, to: THREE.Quaternion) => {
@@ -260,6 +279,7 @@ function tickCalibration() {
   $("cal-text").textContent = `${cal.step + 1}/${total} · ${step.text}`;
   $("cal-ang").textContent = cal.step === 0 ? (still ? "✓" : "…") : cal.step === 4 ? `${rawP.distanceTo(cal.p0).toFixed(2)} m` : `${ang.toFixed(0)}°`;
   $("cal-cancel").textContent = cal.step === 4 ? "Skip" : "Cancel";
+  $("cal-hint").hidden = !(cal.step === 4 && now() - cal.stepStart > 7000 && rawP.distanceTo(cal.p0) < 0.05);
   if (!still || !step.test(ang)) return;
   if (cal.step === 0) cal.q0.copy(q), cal.ref.copy(q);
   if (cal.step === 1) cal.tiltAxis = localAxis(cal.q0, q);
@@ -291,7 +311,7 @@ function tickCalibration() {
     return finishCalibration(true, vertical ? "That step looked vertical: change 'FreeD axes' in Setup, then calibrate again" : undefined);
   }
   cal.step++;
-  cal.stableSince = now();
+  cal.stableSince = cal.stepStart = now();
 }
 function finishCalibration(markNow = false, warn?: string) {
   if (!cal) return;
@@ -315,22 +335,24 @@ function resetCalibration() {
 }
 
 // FreeD apps disagree on axes, so Setup lets you pick the convention and flip signs.
-type FreeDCal = { axes: "xyz-zup" | "xyz-yup" | "unreal"; flipPan: boolean; flipTilt: boolean };
+type FreeDCal = { axes: "xyz-zup" | "xyz-yup" | "unreal"; flipPan: boolean; flipTilt: boolean; unit: number };
 const freedCal: FreeDCal = (() => {
   try {
-    return { axes: "xyz-zup", flipPan: false, flipTilt: false, ...JSON.parse(localStorage.getItem("pfs.freed") ?? "{}") };
+    return { axes: "xyz-zup", flipPan: false, flipTilt: false, unit: 1, ...JSON.parse(localStorage.getItem("pfs.freed") ?? "{}") };
   } catch {
-    return { axes: "xyz-zup", flipPan: false, flipTilt: false };
+    return { axes: "xyz-zup", flipPan: false, flipTilt: false, unit: 1 };
   }
 })();
 const d2r = THREE.MathUtils.degToRad;
 const fq = new THREE.Quaternion(), fe = new THREE.Euler();
 function freedToPose(m: FreeDMsg): [Vec3, Quat] {
   // three.js: x right, y up, -z forward. Pan right is negative yaw here.
+  const u = freedCal.unit; // 1 = standard FreeD (1/64 mm); 10 or 1000 if the app packs cm or m instead
+  const x = m.x * u, y = m.y * u, z = m.z * u;
   const p: Vec3 =
-    freedCal.axes === "xyz-yup" ? [m.x, m.y, m.z] // ARKit-style already
-    : freedCal.axes === "unreal" ? [m.y, m.z, -m.x] // X forward, Y right, Z up
-    : [m.x, m.z, -m.y]; // X right, Y forward, Z up (FreeD default)
+    freedCal.axes === "xyz-yup" ? [x, y, z] // ARKit-style already
+    : freedCal.axes === "unreal" ? [y, z, -x] // X forward, Y right, Z up
+    : [x, z, -y]; // X right, Y forward, Z up (FreeD default)
   const pan = (freedCal.flipPan ? 1 : -1) * m.pan;
   const tilt = (freedCal.flipTilt ? -1 : 1) * m.tilt;
   fe.set(d2r(tilt), d2r(pan), d2r(m.roll), "YXZ");
@@ -340,7 +362,7 @@ function freedToPose(m: FreeDMsg): [Vec3, Quat] {
 
 function onMsg(m: Msg) {
   if (m.type === "arpose") onAr(m.p, m.q, "ZIG SIM");
-  else if (m.type === "freed") onAr(...freedToPose(m), "FreeD");
+  else if (m.type === "freed") (diag.freed = m), onAr(...freedToPose(m), "FreeD");
   else if (m.type === "pose") {
     const first = now() - gyroLast > 2000;
     gyroLast = now();
@@ -792,16 +814,18 @@ $<HTMLInputElement>("t-zoom").oninput = (e) => ((pxPerSec = +(e.target as HTMLIn
 $("zig-ip").textContent = LAN_IP;
 $("freed-ip").textContent = LAN_IP;
 $("freed-port").textContent = String(FREED_PORT);
+const calUnit = $<HTMLSelectElement>("freed-unit");
+calUnit.value = String(freedCal.unit);
 const calAxes = $<HTMLSelectElement>("freed-axes"), calPan = $<HTMLInputElement>("freed-pan"), calTilt = $<HTMLInputElement>("freed-tilt");
 calAxes.value = freedCal.axes;
 calPan.checked = freedCal.flipPan;
 calTilt.checked = freedCal.flipTilt;
 const saveCal = () => {
-  Object.assign(freedCal, { axes: calAxes.value, flipPan: calPan.checked, flipTilt: calTilt.checked });
+  Object.assign(freedCal, { axes: calAxes.value, flipPan: calPan.checked, flipTilt: calTilt.checked, unit: +calUnit.value });
   try { localStorage.setItem("pfs.freed", JSON.stringify(freedCal)); } catch {}
   if (arLive()) setMark(true);
 };
-calAxes.onchange = calPan.onchange = calTilt.onchange = saveCal;
+calAxes.onchange = calPan.onchange = calTilt.onchange = calUnit.onchange = saveCal;
 $("zig-port").textContent = String(ZIG_PORT);
 $<HTMLInputElement>("scale").oninput = (e) => {
   scale = +(e.target as HTMLInputElement).value;
@@ -833,6 +857,27 @@ addEventListener("keydown", (e) => {
   else if (k === "escape") select(null);
 });
 addEventListener("keyup", (e) => keys.delete(e.key.toLowerCase()));
+
+let diagNext = 0;
+function renderDiag(t: number) {
+  if (t < diagNext) return;
+  diagNext = t + 200;
+  const el = $("diag");
+  if (!arLive()) {
+    el.textContent = gyroLive() ? "Phone web page connected (rotation only)." : "No tracking data arriving.\nCheck the IP and port in the phone app, and Windows Firewall (allow Node on private networks).";
+    return;
+  }
+  const f = (n: number, w = 7, d = 2) => n.toFixed(d).padStart(w);
+  const fr = diag.freed;
+  const lines = [`${arSrc}  ${diag.pps} packets/s`];
+  if (arSrc === "FreeD" && fr) {
+    lines.push(`pan ${f(fr.pan, 7, 1)}  tilt ${f(fr.tilt, 7, 1)}  roll ${f(fr.roll, 7, 1)}  deg`);
+    lines.push(`X ${f(fr.x * freedCal.unit)}  Y ${f(fr.y * freedCal.unit)}  Z ${f(fr.z * freedCal.unit)}  m`);
+  } else lines.push(`X ${f(rawP.x)}  Y ${f(rawP.y)}  Z ${f(rawP.z)}  m`);
+  lines.push(posFrozen() ? "POSITION NOT CHANGING" : now() - diag.lastMove < 1500 ? "position: moving" : "position: still");
+  el.textContent = lines.join("\n");
+  el.classList.toggle("bad", posFrozen());
+}
 
 // =====================================================================================
 // Main loop
@@ -901,8 +946,10 @@ renderer.setAnimationLoop(() => {
 
   const src = source();
   const hs = $("hud-src");
-  hs.textContent = src;
-  hs.classList.toggle("ar", src.startsWith("AR"));
+  hs.textContent = sourceHud();
+  hs.classList.toggle("ar", src.startsWith("AR") && !posFrozen());
+  hs.classList.toggle("warn", posFrozen());
+  renderDiag(t);
   $("chip-ar").classList.toggle("live", arLive());
   $("chip-gyro").classList.toggle("live", gyroLive());
   const p = camera.position;
