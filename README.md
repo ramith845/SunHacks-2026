@@ -29,7 +29,7 @@ iPhone browsers (Safari and Chrome both use WebKit) have no WebXR, so a web page
 **FREED Tracker (free)**: it sends the standard FreeD camera-tracking packet over UDP.
 - Receiver IP = the laptop's Wi-Fi IP (shown in *Setup*), port **40000**, then Start.
 - The free tier sends for 3 minutes per Start; tap Start again when it stops.
-- Walk forward once: the camera should move forward. If not, change *FreeD axes* in Setup; if turning right turns the view left, tick *Flip pan*.
+- Press **C** (*Calibrate*) once and follow the five prompts (hold, tilt up, back, pan right, one step forward). This fixes rotation on the wrong axis and walking in the wrong direction, and is remembered.
 
 **ZIG SIM Pro ($3.99)**: Protocol **UDP**, Format **JSON**, port **50000**, rate **60**, Sensor **ARKit** in **DEVICE** mode.
 
@@ -45,7 +45,7 @@ While the tracking app is open on the phone, record from the laptop: **R**, **Pa
 4. *AI critique* on a shot scores the framing and renames/sizes it; *Review my sequence* gives editor notes and missing coverage.
 5. **Export** → shot list CSV, Blender cameras (.py: one keyframed camera per shot with timeline markers), or project JSON.
 
-Keys: **R** record · **Space** play · **M** mark · **WASD QE** dolly · drag look · wheel or **[ ]** lens · **G** grid · **F** flip scene · **Del** delete shot.
+Keys: **R** record · **Space** play · **M** mark · **C** calibrate · **WASD QE** dolly · drag look · wheel or **[ ]** lens · **G** grid · **F** flip scene · **Del** delete shot.
 
 ## Scans
 Export `.spz` or `.ply` from Scaniverse and drag it onto the monitor, or put it in `public/scenes/` and open `https://localhost:5173/?scene=/scenes/yourscan.spz`. Press **F** if it's upside down.

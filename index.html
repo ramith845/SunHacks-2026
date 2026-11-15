@@ -41,6 +41,12 @@
         <div id="hud-br" class="hud"><span id="hud-pos"></span></div>
         <div id="drop-hint" hidden>Drop a .spz / .ply scan</div>
         <div id="toast" hidden></div>
+        <div id="cal" hidden>
+          <div class="cal-title">Calibrate rotation</div>
+          <div id="cal-text"></div>
+          <div id="cal-ang"></div>
+          <button class="btn" id="cal-cancel">Cancel</button>
+        </div>
       </section>
 
       <aside id="side">
@@ -106,7 +112,7 @@
               <label class="check"><input type="checkbox" id="freed-tilt" /> Flip tilt</label>
             </div>
           </div>
-          <p class="muted">Walk forward: the camera should move forward. If it goes sideways or backwards, change the axes. If turning right turns the view left, flip pan.</p>
+          <p class="muted">Then press <kbd>C</kbd> to calibrate (5 quick moves). Only change these if calibration says the step looked vertical.</p>
           <h4>Walk-around tracking · ZIG SIM Pro ($3.99)</h4>
           <ol class="steps">
             <li>Install <b>ZIG SIM Pro</b> on the iPhone.</li>
@@ -118,12 +124,15 @@
             <label>World scale <input type="range" id="scale" min="0.25" max="8" step="0.05" value="1" /><span id="scale-v">1.00×</span></label>
             <label>AR roll fix <select id="roll"><option value="0">0°</option><option value="90">90°</option><option value="180">180°</option><option value="270">270°</option></select></label>
           </div>
+          <h4>Rotation wrong?</h4>
+          <p class="muted">Press <kbd>C</kbd> or <b>⟲ Calibrate</b>, then follow the moves on screen: tilt up, pan right, one step forward. It learns how your phone's axes map to the camera, and is remembered per tracking app.</p>
+          <button class="btn" id="cal-reset">Reset calibration</button>
           <h4>Phone as gyro remote (3DoF)</h4>
           <div class="pair"><canvas id="qr"></canvas><div>Scan with the iPhone camera<br /><code id="url"></code></div></div>
           <h4>Scene</h4>
           <p class="muted">Drag a .spz / .ply scan onto the monitor. <kbd>F</kbd> flips an upside-down scan.</p>
           <h4>Keys</h4>
-          <p class="keys"><kbd>R</kbd>/<kbd>PgDn</kbd> record · <kbd>Space</kbd> play sequence · <kbd>M</kbd> set mark · <kbd>WASD QE</kbd> dolly · drag to look · <kbd>[</kbd> <kbd>]</kbd> lens · <kbd>G</kbd> grid · <kbd>Del</kbd> delete shot</p>
+          <p class="keys"><kbd>R</kbd>/<kbd>PgDn</kbd> record · <kbd>Space</kbd> play sequence · <kbd>M</kbd> set mark · <kbd>C</kbd> calibrate · <kbd>WASD QE</kbd> dolly · drag to look · <kbd>[</kbd> <kbd>]</kbd> lens · <kbd>G</kbd> grid · <kbd>Del</kbd> delete shot</p>
         </div>
       </aside>
     </main>
@@ -134,6 +143,7 @@
       <button class="tbtn rec" id="t-rec" title="Record (R)">●</button>
       <span class="sep"></span>
       <button class="btn" id="t-mark" title="Set mark (M)">⌖ Set mark</button>
+      <button class="btn" id="t-cal" title="Calibrate phone rotation (C)">⟲ Calibrate</button>
       <label class="lens">Lens <input type="range" id="t-lens" min="14" max="135" value="35" /><b id="t-lens-v">35mm</b></label>
       <select id="t-aspect" title="Frame lines">
         <option value="2.39">2.39 : 1</option>

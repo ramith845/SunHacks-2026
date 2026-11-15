@@ -162,9 +162,9 @@ const arLive = () => now() - arLast < 600;
 const gyroLive = () => now() - gyroLast < 1000;
 const source = () => (arLive() ? `AR 6DoF · ${arSrc}` : gyroLive() ? "GYRO 3DoF" : "MOUSE");
 
-function setMark(silent = false) {
+function setMark(silent = false, yaw?: number) {
   // Whatever the camera shows right now becomes the start of the real-world move.
-  const camYaw = yawOf(camera.quaternion);
+  const camYaw = yaw ?? yawOf(camera.quaternion);
   if (arLive()) {
     arOrigin.copy(arP);
     anchor.copy(camera.position);
@@ -175,16 +175,143 @@ function setMark(silent = false) {
   if (!silent) toast("Mark set: this is where your move starts");
 }
 
+// ---- rotation calibration: learns how the phone's axes map to the camera's (two gestures) ----
+const calQ: Record<string, THREE.Quaternion> = {};
+try {
+  for (const [k, v] of Object.entries(JSON.parse(localStorage.getItem("pfs.cal") ?? "{}"))) calQ[k] = new THREE.Quaternion().fromArray(v as number[]);
+} catch {}
+const calOf = (src: string) => calQ[src] ?? new THREE.Quaternion();
+// Yaw offset between the tracker's position axes and its (calibrated) rotation axes, learned from one step forward.
+const posFix: Record<string, THREE.Quaternion> = {};
+try {
+  for (const [k, v] of Object.entries(JSON.parse(localStorage.getItem("pfs.calpos") ?? "{}"))) posFix[k] = new THREE.Quaternion().fromArray(v as number[]);
+} catch {}
+const rawP = new THREE.Vector3(); // latest uncorrected position of the AR source
+const saveCalibration = () => {
+  const dump = (o: Record<string, THREE.Quaternion>) => JSON.stringify(Object.fromEntries(Object.entries(o).map(([k, v]) => [k, v.toArray()])));
+  try {
+    localStorage.setItem("pfs.cal", dump(calQ));
+    localStorage.setItem("pfs.calpos", dump(posFix));
+  } catch {}
+};
+const rawQ = new THREE.Quaternion(); // latest uncalibrated orientation of the active source
+let rawSrc = "";
+
 let arSrc = "";
-function onAr(p: Vec3, q: Quat, src: string) {
+function onAr(p: Vec3, qRaw: Quat, src: string) {
+  rawQ.fromArray(qRaw);
+  rawSrc = src;
+  const q = rawQ.clone().multiply(calOf(src)).toArray() as Quat;
   const first = now() - arLast > 2000;
   arLast = now();
   arSrc = src;
-  arP.fromArray(p);
+  rawP.fromArray(p);
+  arP.copy(rawP);
+  if (posFix[src]) arP.applyQuaternion(posFix[src]);
   arQ.fromArray(q);
   if (first) (setMark(true), toast(`${src} tracking connected: walk to move the camera`));
   targetP.copy(arP).sub(arOrigin).applyQuaternion(arAlign).multiplyScalar(scale).add(anchor);
   targetQ.copy(arAlign).multiply(arQ).multiply(rollQ);
+}
+
+type CalStep = { text: string; test: (ang: number) => boolean };
+const CAL_STEPS: CalStep[] = [
+  { text: "Point the phone straight at the screen and hold still", test: () => true },
+  { text: "Tilt the phone UP about 45° (top edge toward the ceiling) and hold", test: (a) => a > 30 },
+  { text: "Point it back at the screen and hold", test: (a) => a < 12 },
+  { text: "Turn the phone RIGHT about 45° (like panning) and hold", test: (a) => a > 30 },
+  { text: "Point at the screen again, take one big step TOWARD it, and hold", test: () => !!cal && rawP.distanceTo(cal.p0) > 0.35 },
+];
+let cal: { step: number; ref: THREE.Quaternion; q0: THREE.Quaternion; tiltAxis?: THREE.Vector3; stableSince: number; last: THREE.Quaternion; p0: THREE.Vector3; lastP: THREE.Vector3 } | null = null;
+function startCalibration() {
+  if (!arLive() && !gyroLive()) return toast("Start your tracking app (or the phone page) first, then calibrate");
+  calYaw = yawOf(camera.quaternion);
+  calPos.copy(camera.position);
+  neutral = null;
+  cal = { step: 0, ref: rawQ.clone(), q0: rawQ.clone(), stableSince: now(), last: rawQ.clone(), p0: rawP.clone(), lastP: rawP.clone() };
+  $("cal").hidden = false;
+}
+const localAxis = (from: THREE.Quaternion, to: THREE.Quaternion) => {
+  const d = from.clone().invert().multiply(to);
+  if (d.w < 0) d.set(-d.x, -d.y, -d.z, -d.w);
+  return new THREE.Vector3(d.x, d.y, d.z).normalize();
+};
+const angDeg = (a: THREE.Quaternion, b: THREE.Quaternion) => THREE.MathUtils.radToDeg(a.angleTo(b));
+let calYaw = 0;
+const calPos = new THREE.Vector3();
+let neutral: THREE.Quaternion | null = null; // after calibrating: auto-mark when the phone points back at the screen
+function tickCalibration() {
+  if (!cal) {
+    if (neutral && angDeg(rawQ, neutral) < 8) {
+      neutral = null;
+      setMark(true, calYaw); // face the same way the camera did before calibrating
+      toast("Calibrated and marked. Walk to move the camera.");
+    }
+    return;
+  }
+  const q = rawQ.clone();
+  // "Holding still" = moved less than 2 degrees over the last 0.6 s.
+  if (angDeg(q, cal.last) > 2) (cal.stableSince = now()), cal.last.copy(q);
+  if (rawP.distanceTo(cal.lastP) > 0.03) (cal.stableSince = now()), cal.lastP.copy(rawP);
+  const still = now() - cal.stableSince > 600;
+  const step = CAL_STEPS[cal.step];
+  const ang = angDeg(cal.ref, q);
+  const total = arLive() ? 5 : 4;
+  $("cal-text").textContent = `${cal.step + 1}/${total} · ${step.text}`;
+  $("cal-ang").textContent = cal.step === 0 ? (still ? "✓" : "…") : cal.step === 4 ? `${rawP.distanceTo(cal.p0).toFixed(2)} m` : `${ang.toFixed(0)}°`;
+  $("cal-cancel").textContent = cal.step === 4 ? "Skip" : "Cancel";
+  if (!still || !step.test(ang)) return;
+  if (cal.step === 0) cal.q0.copy(q), cal.ref.copy(q);
+  if (cal.step === 1) cal.tiltAxis = localAxis(cal.q0, q);
+  if (cal.step === 2) cal.ref.copy(q), cal.q0.copy(q);
+  if (cal.step === 3) {
+    // Tilt up = +rotation about camera X. Pan right = -rotation about camera Y.
+    const X = cal.tiltAxis!;
+    const Y = localAxis(cal.q0, q).negate();
+    Y.addScaledVector(X, -Y.dot(X)).normalize();
+    const Z = new THREE.Vector3().crossVectors(X, Y);
+    const R = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(X, Y, Z));
+    calQ[rawSrc] = R;
+    saveCalibration();
+    if (!arLive()) return finishCalibration(); // gyro page has no position to calibrate
+    cal.p0.copy(rawP);
+  }
+  if (cal.step === 4) {
+    // The step you just took should move the camera the way the (calibrated) phone is facing.
+    const d = rawP.clone().sub(cal.p0);
+    const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(rawQ.clone().multiply(calOf(rawSrc)));
+    const vertical = Math.abs(d.y) > Math.hypot(d.x, d.z);
+    if (!vertical) {
+      posFix[rawSrc] = new THREE.Quaternion().setFromAxisAngle(UP, Math.atan2(fwd.x, fwd.z) - Math.atan2(d.x, d.z));
+      saveCalibration();
+    }
+    arP.copy(rawP);
+    if (posFix[rawSrc]) arP.applyQuaternion(posFix[rawSrc]);
+    arQ.copy(rawQ).multiply(calOf(rawSrc));
+    return finishCalibration(true, vertical ? "That step looked vertical: change 'FreeD axes' in Setup, then calibrate again" : undefined);
+  }
+  cal.step++;
+  cal.stableSince = now();
+}
+function finishCalibration(markNow = false, warn?: string) {
+  if (!cal) return;
+  $("cal").hidden = true;
+  if (markNow) {
+    camera.position.copy(calPos); // calibration moves shouldn't leave the camera somewhere odd
+    targetP.copy(calPos);
+    setMark(true, calYaw);
+    toast(warn ?? "Calibrated and marked. Walk to move the camera.", warn ? 8000 : 5000);
+  } else {
+    neutral = cal.q0.clone();
+    toast("Rotation calibrated. Point the phone back at the screen.", 6000);
+  }
+  cal = null;
+}
+function resetCalibration() {
+  for (const k of Object.keys(calQ)) delete calQ[k];
+  for (const k of Object.keys(posFix)) delete posFix[k];
+  try { localStorage.removeItem("pfs.cal"); localStorage.removeItem("pfs.calpos"); } catch {}
+  toast("Rotation calibration cleared");
 }
 
 // FreeD apps disagree on axes, so Setup lets you pick the convention and flip signs.
@@ -217,7 +344,8 @@ function onMsg(m: Msg) {
   else if (m.type === "pose") {
     const first = now() - gyroLast > 2000;
     gyroLast = now();
-    gyroQ.fromArray(m.q);
+    if (!arLive()) (rawQ.fromArray(m.q), (rawSrc = "GYRO"));
+    gyroQ.fromArray(m.q).multiply(calOf("GYRO"));
     if (first) setMark(true);
     if (!arLive()) targetQ.copy(gyroAlign).multiply(gyroQ);
     gyroMove.fromArray(m.move);
@@ -651,6 +779,9 @@ $("t-play").onclick = togglePlay;
 $("t-start").onclick = () => (stopPlayback(), select(project.shots[0]?.id ?? null));
 $("t-rec").onclick = () => (recording ? stopRec() : startRec());
 $("t-mark").onclick = () => setMark();
+$("t-cal").onclick = () => startCalibration();
+$("cal-cancel").onclick = () => (cal && cal.step === 4 ? finishCalibration() : ((cal = null), ($("cal").hidden = true)));
+$("cal-reset").onclick = () => resetCalibration();
 $<HTMLInputElement>("t-lens").oninput = (e) => setLens(+(e.target as HTMLInputElement).value);
 $<HTMLSelectElement>("t-aspect").onchange = (e) => ((aspect = +(e.target as HTMLSelectElement).value), computeFrame(), applyLens());
 const gridBtn = $("t-grid");
@@ -693,6 +824,7 @@ addEventListener("keydown", (e) => {
   if (k === "r" || e.key === "PageDown") (e.preventDefault(), recording ? stopRec() : startRec());
   else if (k === " ") (e.preventDefault(), togglePlay());
   else if (k === "m") setMark();
+  else if (k === "c") startCalibration();
   else if (k === "f") ((flipped = !flipped), applyFlip(), localStorage.setItem("pfs.flip", flipped ? "1" : "0"));
   else if (k === "g") toggleGrid();
   else if (k === "[") setLens(lensMm / 1.1);
@@ -756,6 +888,7 @@ renderer.setAnimationLoop(() => {
     $("hud-shot").textContent = s ? `SH${String(project.shots.indexOf(s) + 1).padStart(2, "0")} · ${s.name}${s.frames.length ? "" : " (planned)"}` : "";
   }
 
+  tickCalibration();
   renderer.render(scene, camera);
   drawOverlay();
 
@@ -779,3 +912,4 @@ renderer.setAnimationLoop(() => {
 renderTimeline();
 renderInspector();
 resize();
+(window as any).__pfs = { camera }; // handy for debugging in the console

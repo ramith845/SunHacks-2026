@@ -115,3 +115,7 @@ body.playing #playhead { display: block; }
 .checks { display: flex; flex-direction: column; justify-content: flex-end; gap: 6px; }
 .tab label.check { flex-direction: row; align-items: center; gap: 6px; color: var(--text); }
 .tab label.check input { width: auto; }
+#cal { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); background: #000d; border: 1px solid var(--accent); border-radius: 12px; padding: 18px 22px; text-align: center; display: flex; flex-direction: column; gap: 10px; align-items: center; min-width: 320px; }
+.cal-title { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); }
+#cal-text { font-size: 16px; font-weight: 600; max-width: 360px; }
+#cal-ang { font: 700 28px var(--mono); color: var(--accent); }
