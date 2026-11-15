@@ -104,10 +104,13 @@
           <ol class="steps">
             <li>Install <b>FREED Tracker</b> (free) on the iPhone.</li>
             <li>Receiver IP <code id="freed-ip"></code>, port <code id="freed-port"></code>. Tap Start.</li>
-            <li>Press <kbd>M</kbd> where the shot starts and walk. Free version sends for 3 min per Start: just tap Start again.</li>
+            <li>Point the phone at the screen, tap <b>Set Zero</b> in the app, then press <kbd>M</kbd> here. Walk.</li>
+            <li>Keep pans and tilts under about 80°: past that FREED Tracker's angles break. If the view gets stuck, Set Zero again.</li>
+            <li>The free version sends for 3 min per Start: just tap Start again.</li>
           </ol>
           <div class="two">
             <label>FreeD axes <select id="freed-axes">
+              <option value="freedtracker">FREED Tracker (X up, Z fwd)</option>
               <option value="xyz-zup">X right, Y fwd, Z up</option>
               <option value="xyz-yup">X right, Y up, Z back</option>
               <option value="unreal">X fwd, Y right, Z up</option>
@@ -115,6 +118,7 @@
             <div class="checks">
               <label class="check"><input type="checkbox" id="freed-pan" /> Flip pan</label>
               <label class="check"><input type="checkbox" id="freed-tilt" /> Flip tilt</label>
+              <label class="check"><input type="checkbox" id="freed-side" /> Flip sideways</label>
             </div>
           </div>
           <label>Position units <select id="freed-unit">
@@ -123,7 +127,7 @@
             <option value="1000">App sends m (×1000)</option>
             <option value="0.1">÷10</option>
           </select></label>
-          <p class="muted">Then press <kbd>C</kbd> to calibrate (5 quick moves). Only change these if calibration says the step looked vertical.</p>
+          <p class="muted">These defaults match FREED Tracker, so you shouldn't need to calibrate. If stepping sideways goes the wrong way, tick <i>Flip sideways</i>.</p>
           <h4>Something moving wrong?</h4>
           <p class="muted">Do the move that looks wrong, then save. It keeps the last 90 seconds of raw tracking and what the camera did.</p>
           <label>What you did / what went wrong <input id="log-note" placeholder="e.g. walked 2 m forward, camera went sideways" /></label>
@@ -161,6 +165,7 @@
       <span class="sep"></span>
       <button class="btn" id="t-mark" title="Set mark (M)">⌖ Set mark</button>
       <button class="btn" id="t-cal" title="Calibrate phone rotation (C)">⟲ Calibrate</button>
+      <button class="btn" id="t-flip" title="Turn an upside-down scan the right way up (F)">⇅ Flip scan</button>
       <label class="lens">Lens <input type="range" id="t-lens" min="14" max="135" value="35" /><b id="t-lens-v">35mm</b></label>
       <select id="t-aspect" title="Frame lines">
         <option value="2.39">2.39 : 1</option>
