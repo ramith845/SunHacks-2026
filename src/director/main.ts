@@ -256,7 +256,7 @@ function trackDiag(p: Vec3, q: Quat) {
   if (P.distanceTo(diag.lastP) > 0.002) (diag.lastMove = t), diag.lastP.copy(P), (diag.turned = 0), (diag.warned = false);
   const a = THREE.MathUtils.radToDeg(Q.angleTo(diag.lastQ));
   if (a > 1) (diag.turned += a), diag.lastQ.copy(Q);
-  if (freedStuck === 30) toast("FREED Tracker's tilt is stuck (it breaks past ~85°). Press Set Zero in the app while pointing at the screen, then M here.", 10000);
+  if (freedStuck === 30) toast("FREED Tracker's angles are stuck (they break past ~85°). Press Set Zero in the app while pointing at the screen, then M here.", 10000);
   if (posFrozen() && !diag.warned) {
     diag.warned = true;
     toast("Rotation is arriving but position isn't changing. In FREED Tracker: allow Camera access, turn on X/Y/Z output, release Hold Position. See Setup.", 12000);
@@ -385,8 +385,8 @@ function resetCalibration() {
 // FreeD apps disagree on axes, so Setup lets you pick the convention and flip signs.
 // Default = what FREED Tracker actually sends (measured from Ramith's logs, Nov 15):
 // after Set Zero, walking forward is +Z, standing up is +X, sideways is Y; pan right +, tilt up +.
-type FreeDCal = { axes: "freedtracker" | "xyz-zup" | "xyz-yup" | "unreal"; flipPan: boolean; flipTilt: boolean; flipSide: boolean; unit: number };
-const FREED_DEFAULT: FreeDCal = { axes: "freedtracker", flipPan: false, flipTilt: false, flipSide: false, unit: 1 };
+type FreeDCal = { axes: "freedtracker" | "xyz-zup" | "xyz-yup" | "unreal"; flipPan: boolean; flipTilt: boolean; flipSide: boolean; swapTR: boolean; unit: number };
+const FREED_DEFAULT: FreeDCal = { axes: "freedtracker", flipPan: false, flipTilt: false, flipSide: false, swapTR: true, unit: 1 };
 const freedCal: FreeDCal = (() => {
   try {
     return { ...FREED_DEFAULT, ...JSON.parse(localStorage.getItem("pfs.freed2") ?? "{}") };
@@ -436,7 +436,9 @@ function freedToPose(m: FreeDMsg): [Vec3, Quat] {
     : freedCal.axes === "xyz-yup" ? [x * side, y, z] // ARKit-style already
     : freedCal.axes === "unreal" ? [y * side, z, -x] // X forward, Y right, Z up
     : [x * side, z, -y]; // X right, Y forward, Z up (FreeD default)
-  const panV = fPan(m.pan), tiltV = fTilt(m.tilt), rollV = fRoll(m.roll);
+  // Held in portrait, FREED Tracker's "tilt" and "roll" fields come out swapped (Ramith confirmed live).
+  const tiltIn = freedCal.swapTR ? m.roll : m.tilt, rollIn = freedCal.swapTR ? m.tilt : m.roll;
+  const panV = fPan(m.pan), tiltV = fTilt(tiltIn), rollV = fRoll(rollIn);
   freedStuck = Math.abs(m.tilt) >= 255.9 || Math.abs(m.pan) >= 255.9 ? freedStuck + 1 : 0;
   const pan = (freedCal.flipPan ? 1 : -1) * (panV ?? 0);
   const tilt = (freedCal.flipTilt ? -1 : 1) * (tiltV ?? 0);
@@ -904,18 +906,19 @@ $<HTMLInputElement>("t-zoom").oninput = (e) => ((pxPerSec = +(e.target as HTMLIn
 $("freed-port").textContent = String(FREED_PORT);
 const calUnit = $<HTMLSelectElement>("freed-unit");
 calUnit.value = String(freedCal.unit);
-const calAxes = $<HTMLSelectElement>("freed-axes"), calPan = $<HTMLInputElement>("freed-pan"), calTilt = $<HTMLInputElement>("freed-tilt"), calSide = $<HTMLInputElement>("freed-side");
+const calAxes = $<HTMLSelectElement>("freed-axes"), calPan = $<HTMLInputElement>("freed-pan"), calTilt = $<HTMLInputElement>("freed-tilt"), calSide = $<HTMLInputElement>("freed-side"), calSwap = $<HTMLInputElement>("freed-swap");
 calAxes.value = freedCal.axes;
 calPan.checked = freedCal.flipPan;
 calTilt.checked = freedCal.flipTilt;
 calSide.checked = freedCal.flipSide;
+calSwap.checked = freedCal.swapTR;
 const saveCal = () => {
-  Object.assign(freedCal, { axes: calAxes.value, flipPan: calPan.checked, flipTilt: calTilt.checked, flipSide: calSide.checked, unit: +calUnit.value });
+  Object.assign(freedCal, { axes: calAxes.value, flipPan: calPan.checked, flipTilt: calTilt.checked, flipSide: calSide.checked, swapTR: calSwap.checked, unit: +calUnit.value });
   resetFreedFilters();
   try { localStorage.setItem("pfs.freed2", JSON.stringify(freedCal)); } catch {}
   if (arLive()) setMark(true);
 };
-calAxes.onchange = calPan.onchange = calTilt.onchange = calSide.onchange = calUnit.onchange = saveCal;
+calAxes.onchange = calPan.onchange = calTilt.onchange = calSide.onchange = calSwap.onchange = calUnit.onchange = saveCal;
 $("zig-port").textContent = String(ZIG_PORT);
 $<HTMLInputElement>("scale").oninput = (e) => {
   scale = +(e.target as HTMLInputElement).value;
@@ -1015,7 +1018,7 @@ function renderDiag(t: number) {
     lines.push(`pan ${f(fr.pan, 7, 1)}  tilt ${f(fr.tilt, 7, 1)}  roll ${f(fr.roll, 7, 1)}  deg`);
     lines.push(`X ${f(fr.x * freedCal.unit)}  Y ${f(fr.y * freedCal.unit)}  Z ${f(fr.z * freedCal.unit)}  m`);
   } else lines.push(`X ${f(rawP.x)}  Y ${f(rawP.y)}  Z ${f(rawP.z)}  m`);
-  if (freedStuck > 0) lines.push("TILT STUCK at ±256: press Set Zero in FREED Tracker");
+  if (freedStuck > 0) lines.push("ANGLE STUCK at ±256: press Set Zero in FREED Tracker");
   lines.push(posFrozen() ? "POSITION NOT CHANGING" : now() - diag.lastMove < 1500 ? "position: moving" : "position: still");
   el.textContent = lines.join("\n");
   el.classList.toggle("bad", posFrozen());
