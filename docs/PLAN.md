@@ -13,7 +13,7 @@
 | Scan | **Scaniverse** (iPhone/Android, free) | Captures and trains splats on-device; exports **PLY** and **SPZ** (SPZ is Scaniverse's open compressed format, ~10x smaller). |
 | Viewer | **Three.js + Spark** (`sparkjs.dev`, World Labs) | Spark is a Three.js splat renderer: `SplatMesh({ url })` added to a normal scene. Loads PLY, SPZ, SPLAT, KSPLAT, and works with WebXR. v2.x is current. Fallback: Three.js r186+ has a built-in WebGPU splat renderer. |
 | Frontend | **Vite + TypeScript**, plain DOM UI (or React if the UI person prefers) | Fast dev server, easy HTTPS via `@vitejs/plugin-basic-ssl` (phone sensors need HTTPS). |
-| Phone pose | **iPhone only.** `DeviceOrientationEvent` in Safari → WebSocket (rotation; needs HTTPS and one permission tap). Position comes from on-screen dolly/truck controls. | Decided Nov 14: iPhone + laptop web app only, no Android. Later option for walk-around tracking: a ~100-line Swift ARKit app streaming `frame.camera.transform` over the same WebSocket. |
+| Phone pose | **iPhone only.** 6DoF: **ZIG SIM Pro** ($3.99) streams ARKit position + rotation over UDP (JSON/OSC) to the dev server, which relays it on the WebSocket. 3DoF fallback: `DeviceOrientationEvent` web page. | iOS browsers (Safari and Chrome are both WebKit) have no WebXR, confirmed on caniuse (Nov 2026). ZIG SIM avoids needing a Mac/Xcode for a native ARKit app. |
 | Relay server | **Node + `ws`** (one file) | Pairs phone ↔ laptop by room code, forwards pose at 30–60 Hz, receives "take" events. |
 | Storage | **MongoDB Atlas** (free M0) | One `takes` collection: camera path, lens, thumbnail, notes. |
 | AI | **Gemini API** (current Flash model, multimodal) | Script → shot list; frame thumbnail → framing critique. |
