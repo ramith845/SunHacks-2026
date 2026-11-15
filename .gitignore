@@ -3,5 +3,5 @@ node_modules/
 .env.*
 !.env.example
 dist/
-public/scenes/*.spz
-public/scenes/*.ply
+public/scenes/*
+!public/scenes/README.md

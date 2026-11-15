@@ -123,3 +123,7 @@ body.playing #playhead { display: block; }
 #diag.bad { border-color: var(--rec); color: #ff8a82; }
 #hud-src.warn { color: var(--rec); }
 #cal-hint { color: #ff8a82; max-width: 360px; font-size: 12px; }
+#scene-list { display: flex; flex-direction: column; gap: 4px; }
+.scene { display: flex; justify-content: space-between; gap: 8px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; cursor: pointer; text-align: left; }
+.scene.on { border-color: var(--accent); color: var(--accent); }
+.scene small { color: var(--muted); font-family: var(--mono); }

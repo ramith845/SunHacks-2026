@@ -7,7 +7,15 @@
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body class="phone">
-    <button id="start">Tap to start camera</button>
+    <div id="home">
+      <h1>Pocket Film Set</h1>
+      <button id="scan-btn" class="big">⬆ Send a scan to the laptop</button>
+      <p id="scan-status" class="hint">In Scaniverse: Share → Export Model → SPZ → Save to Files. Then pick it here.</p>
+      <progress id="scan-prog" max="1" value="0" hidden></progress>
+      <input type="file" id="scan-file" hidden />
+      <button id="start" class="big alt">Use this phone as a gyro remote</button>
+      <p class="hint">For walk-around tracking keep FREED Tracker running instead.</p>
+    </div>
     <div id="ui" hidden>
       <div id="conn">Connecting…</div>
       <div class="lens">

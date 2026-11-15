@@ -22,6 +22,7 @@ export type Msg =
   | PoseMsg
   | ArPoseMsg
   | FreeDMsg
+  | { type: "scene"; url: string; name: string } // a new scan was uploaded: load it
   | { type: "mark" } // "where I stand now = where the camera is now"
   | { type: "rec" }
   | { type: "stop" }
@@ -51,3 +52,19 @@ export function connect(onMsg: (m: Msg) => void, onState?: (open: boolean) => vo
 // 35mm-equivalent focal length <-> vertical FOV (24mm tall full-frame gate).
 export const lensToFov = (mm: number) => (2 * Math.atan(12 / mm) * 180) / Math.PI;
 export const fovToLens = (fov: number) => 12 / Math.tan((fov * Math.PI) / 360);
+
+// Upload a splat file to the laptop's scan library, with progress (0..1).
+export function uploadScan(file: File, onProgress?: (k: number) => void, announce = true) {
+  return new Promise<{ name: string; url: string }>((resolve, reject) => {
+    const x = new XMLHttpRequest();
+    x.open("POST", `/api/scenes/upload?name=${encodeURIComponent(file.name)}${announce ? "" : "&announce=0"}`);
+    x.upload.onprogress = (e) => e.lengthComputable && onProgress?.(e.loaded / e.total);
+    x.onload = () => {
+      let j: any = {};
+      try { j = JSON.parse(x.responseText); } catch {}
+      x.status === 200 ? resolve(j) : reject(new Error(j.error ?? `Upload failed (${x.status})`));
+    };
+    x.onerror = () => reject(new Error("Upload failed: lost connection to the laptop"));
+    x.send(file);
+  });
+}

@@ -5,6 +5,8 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { makeGemini, planSchema, critiqueSchema, reviewSchema, SYSTEM_DP, type Part } from "./gemini";
 import { startZigSim } from "./zigsim";
 import { startFreeD } from "./freed";
+import { makeScenes } from "./scenes";
+import path from "node:path";
 
 type Opts = { geminiKey?: string; geminiModel?: string; zigPort: number; freedPort: number };
 
@@ -97,8 +99,14 @@ export function pocketFilmSet(opts: Opts): Plugin {
     // ---- FreeD (free "FREED Tracker" app and any virtual-production tracker) ----
     const stopFreeD = startFreeD(opts.freedPort, (f) => broadcast(JSON.stringify({ type: "freed", ...f })), log);
     httpServer.on("close", () => (stop(), stopFreeD()));
+    // ---- scan library: phone uploads a splat, the laptop loads it ----
+    const scenes = makeScenes(path.resolve(process.cwd(), "public/scenes"), (url, name) => {
+      log(`[scenes] new scan: ${name}`);
+      broadcast(JSON.stringify({ type: "scene", url, name }));
+    });
     // ---- AI endpoints ----
     middlewares.use(async (req: IncomingMessage, res: ServerResponse, next: () => void) => {
+      if (scenes(req, res)) return;
       const route = routes[(req.url ?? "").split("?")[0]];
       if (!route) return next();
       res.setHeader("content-type", "application/json");

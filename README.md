@@ -47,14 +47,19 @@ While the tracking app is open on the phone, record from the laptop: **R**, **Pa
 
 Keys: **R** record · **Space** play · **M** mark · **C** calibrate · **WASD QE** dolly · drag look · wheel or **[ ]** lens · **G** grid · **F** flip scene · **Del** delete shot.
 
-## Scans
-Export `.spz` or `.ply` from Scaniverse and drag it onto the monitor, or put it in `public/scenes/` and open `https://localhost:5173/?scene=/scenes/yourscan.spz`. Press **F** if it's upside down.
+## Scans (phone → scene)
+1. Scaniverse: scan in Splat mode, then Share → Export Model → **SPZ** → Save to Files.
+2. Open the phone page (QR code in the *Setup* tab), tap **Send a scan to the laptop**, pick the file.
+3. It loads on the laptop by itself, is saved in `public/scenes/`, and is remembered after a refresh. *Setup → Scans* lists every scan; click to switch.
+
+Dragging a `.spz` / `.ply` onto the monitor does the same. Press **F** if a scan is upside down (remembered per scan). Scaniverse scans are real-world scale, so with *World scale* at 1× a metre of walking is a metre in the scan.
 
 ## Layout
 ```
 index.html, src/director/   laptop app: main.ts (scene, camera, timeline, UI), shots.ts, ai.ts, export.ts
 camera.html, src/phone.ts    iPhone web remote (gyro 3DoF)
 server/plugin.ts             dev-server plugin: WebSocket relay, Gemini endpoints
+server/scenes.ts             scan library: upload from the phone, list, serve
 server/freed.ts              FreeD D1 receiver (FREED Tracker, free)
 server/zigsim.ts             ARKit pose from ZIG SIM Pro over UDP (JSON or OSC)
 server/gemini.ts             Gemini calls + response schemas (key stays on the server)

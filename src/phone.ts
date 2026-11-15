@@ -1,6 +1,6 @@
 // iPhone page: reads the motion sensors and streams the camera pose to the laptop.
 import * as THREE from "three";
-import { connect, lensToFov, type Msg } from "./protocol";
+import { connect, lensToFov, uploadScan, type Msg } from "./protocol";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const startBtn = $("start"), ui = $("ui"), conn = $("conn"), recBtn = $("rec");
@@ -66,8 +66,7 @@ startBtn.onclick = async () => {
     }
   }
   window.addEventListener("deviceorientation", onOrient);
-  startBtn.hidden = true;
-  startBtn.style.display = "none";
+  $("home").style.display = "none";
   ui.hidden = false;
   (navigator as any).wakeLock?.request("screen").catch(() => {});
   setInterval(() => {
@@ -79,4 +78,23 @@ startBtn.onclick = async () => {
       fov: lensToFov(+lens.value),
     });
   }, 1000 / 30);
+};
+
+// ---- send a Scaniverse export straight to the laptop ----
+const scanFile = $<HTMLInputElement>("scan-file"), scanStatus = $("scan-status"), scanProg = $<HTMLProgressElement>("scan-prog");
+$("scan-btn").onclick = () => scanFile.click();
+scanFile.onchange = async () => {
+  const f = scanFile.files?.[0];
+  scanFile.value = "";
+  if (!f) return;
+  scanProg.hidden = false;
+  scanProg.value = 0;
+  scanStatus.textContent = `Sending ${f.name} (${(f.size / 1e6).toFixed(1)} MB)…`;
+  try {
+    const r = await uploadScan(f, (k) => (scanProg.value = k));
+    scanStatus.textContent = `✓ ${r.name} is on the laptop. Walk into it!`;
+  } catch (e: any) {
+    scanStatus.textContent = `✕ ${e.message}`;
+  }
+  scanProg.hidden = true;
 };

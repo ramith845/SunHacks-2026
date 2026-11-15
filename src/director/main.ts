@@ -3,7 +3,7 @@
 import * as THREE from "three";
 import { SparkRenderer, SplatMesh } from "@sparkjsdev/spark";
 import QRCode from "qrcode";
-import { connect, LAN_IP, ZIG_PORT, FREED_PORT, lensToFov, fovToLens, type Msg, type FreeDMsg, type Vec3, type Quat } from "../protocol";
+import { uploadScan, connect, LAN_IP, ZIG_PORT, FREED_PORT, lensToFov, fovToLens, type Msg, type FreeDMsg, type Vec3, type Quat } from "../protocol";
 import { load, save, uid, shotLen, defaultType, classifyMove, sampleFrame, SHOT_TYPES, MOVES, type Shot, type Frame } from "./shots";
 import { exportCsv, exportJson, exportBlender, timecode } from "./export";
 import { aiStatus, aiPlan, aiCritique, aiReview } from "./ai";
@@ -41,22 +41,58 @@ scene.add(camera);
 // Sample splat from the Spark README until you drop in your own scan (or pass ?scene=/scenes/x.spz).
 const DEFAULT_SCENE = "https://sparkjs.dev/assets/splats/butterfly.spz";
 let splat: SplatMesh | null = null;
-let flipped = localStorage.getItem("pfs.flip") !== "0"; // phone scans are usually y-down; F toggles
+let sceneKey = "sample"; // which scan is loaded; flip is remembered per scan
+let flipped = true; // phone scans are usually y-down; F toggles
+const store = {
+  get: (k: string) => { try { return localStorage.getItem(k); } catch { return null; } },
+  set: (k: string, v: string) => { try { localStorage.setItem(k, v); } catch {} },
+};
 function setSplat(opts: ConstructorParameters<typeof SplatMesh>[0], label: string) {
   if (splat) {
     scene.remove(splat);
     splat.dispose();
   }
+  sceneKey = label;
+  flipped = store.get(`pfs.flip.${sceneKey}`) !== "0";
   splat = new SplatMesh(opts);
   applyFlip();
   scene.add(splat);
-  splat.initialized.then(() => toast(`Scene: ${label}`)).catch(() => toast("Couldn't load that scan. Drag a .spz or .ply onto the monitor.", 6000));
+  const mine = splat;
+  splat.initialized
+    .then(() => mine === splat && toast(`Scene: ${label}`))
+    .catch(() => mine === splat && toast("Couldn't load that scan. Send one from the phone or drag a .spz / .ply onto the monitor.", 6000));
+  renderScenes();
 }
 function applyFlip() {
   splat?.quaternion.set(flipped ? 1 : 0, 0, 0, flipped ? 0 : 1);
 }
-const sceneParam = new URLSearchParams(location.search).get("scene");
-setSplat({ url: sceneParam ?? DEFAULT_SCENE }, sceneParam ?? "sample");
+function toggleFlip() {
+  flipped = !flipped;
+  applyFlip();
+  store.set(`pfs.flip.${sceneKey}`, flipped ? "1" : "0");
+}
+// Load a scan from the library and remember it for the next refresh.
+function loadScene(url: string, name: string) {
+  store.set("pfs.scene", JSON.stringify({ url, name }));
+  setSplat({ url }, name);
+  targetP.set(0, 0, 0); // scans are centred near where the scan started
+  anchor.copy(targetP);
+  if (arLive()) setMark(true);
+}
+type SceneInfo = { name: string; url: string; bytes: number };
+let sceneList: SceneInfo[] = [];
+async function refreshScenes() {
+  sceneList = await fetch("/api/scenes").then((r) => r.json()).catch(() => []);
+  renderScenes();
+}
+function renderScenes() {
+  const el = document.getElementById("scene-list");
+  if (!el) return;
+  el.innerHTML = sceneList.length
+    ? sceneList.map((s, i) => `<button class="scene${s.name === sceneKey ? " on" : ""}" data-i="${i}"><span>${esc(s.name)}</span><small>${(s.bytes / 1e6).toFixed(1)} MB</small></button>`).join("")
+    : `<p class="muted">No scans yet. Send one from the phone (QR code above) or drag a file onto the monitor.</p>`;
+  el.querySelectorAll<HTMLButtonElement>("[data-i]").forEach((b) => (b.onclick = () => { const s = sceneList[+b.dataset.i!]; loadScene(s.url, s.name); }));
+}
 
 monitor.addEventListener("dragover", (e) => (e.preventDefault(), ($("drop-hint").hidden = false)));
 monitor.addEventListener("dragleave", () => ($("drop-hint").hidden = true));
@@ -64,7 +100,16 @@ monitor.addEventListener("drop", async (e) => {
   e.preventDefault();
   $("drop-hint").hidden = true;
   const f = e.dataTransfer?.files[0];
-  if (f) setSplat({ fileBytes: await f.arrayBuffer(), fileName: f.name }, f.name);
+  if (!f) return;
+  // Save it into the scan library so it survives a refresh, then load it.
+  toast(`Saving ${f.name}…`, 60000);
+  try {
+    const r = await uploadScan(f, undefined, false);
+    await refreshScenes();
+    loadScene(r.url, r.name);
+  } catch (err: any) {
+    toast(err.message, 6000);
+  }
 });
 
 // =====================================================================================
@@ -372,7 +417,8 @@ function onMsg(m: Msg) {
     if (!arLive()) targetQ.copy(gyroAlign).multiply(gyroQ);
     gyroMove.fromArray(m.move);
     if (!arLive()) setLens(fovToLens(m.fov));
-  } else if (m.type === "mark") setMark();
+  } else if (m.type === "scene") refreshScenes().then(() => loadScene(m.url, m.name));
+  else if (m.type === "mark") setMark();
   else if (m.type === "rec") startRec();
   else if (m.type === "stop") stopRec();
 }
@@ -849,7 +895,7 @@ addEventListener("keydown", (e) => {
   else if (k === " ") (e.preventDefault(), togglePlay());
   else if (k === "m") setMark();
   else if (k === "c") startCalibration();
-  else if (k === "f") ((flipped = !flipped), applyFlip(), localStorage.setItem("pfs.flip", flipped ? "1" : "0"));
+  else if (k === "f") toggleFlip();
   else if (k === "g") toggleGrid();
   else if (k === "[") setLens(lensMm / 1.1);
   else if (k === "]") setLens(lensMm * 1.1);
@@ -959,4 +1005,16 @@ renderer.setAnimationLoop(() => {
 renderTimeline();
 renderInspector();
 resize();
+
+// Initial scene: ?scene= in the URL, else the last scan used, else the sample.
+(async () => {
+  await refreshScenes();
+  const param = new URLSearchParams(location.search).get("scene");
+  let saved: { url: string; name: string } | null = null;
+  try { saved = JSON.parse(store.get("pfs.scene") ?? "null"); } catch {}
+  if (param) setSplat({ url: param }, param.split("/").pop() ?? param);
+  else if (saved && sceneList.some((s) => s.url === saved!.url)) setSplat({ url: saved.url }, saved.name);
+  else if (sceneList.length) loadScene(sceneList[0].url, sceneList[0].name);
+  else setSplat({ url: DEFAULT_SCENE }, "sample");
+})();
 (window as any).__pfs = { camera }; // handy for debugging in the console
