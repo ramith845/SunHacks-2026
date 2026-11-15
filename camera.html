@@ -9,10 +9,10 @@
   <body class="phone">
     <div id="home">
       <h1>Pocket Film Set</h1>
-      <button id="scan-btn" class="big">⬆ Send a scan to the laptop</button>
+      <!-- The file input sits invisibly on top of the button: iPhone browsers ignore script clicks on hidden file inputs. -->
+      <label id="scan-btn" class="big filebtn">⬆ Send a scan to the laptop<input type="file" id="scan-file" /></label>
       <p id="scan-status" class="hint">In Scaniverse: Share → Export Model → SPZ → Save to Files. Then pick it here.</p>
       <progress id="scan-prog" max="1" value="0" hidden></progress>
-      <input type="file" id="scan-file" hidden />
       <button id="start" class="big alt">Use this phone as a gyro remote</button>
       <p class="hint">For walk-around tracking keep FREED Tracker running instead.</p>
     </div>
@@ -39,6 +39,47 @@
       </div>
       <button id="rec">● REC</button>
     </div>
+    <div id="err" hidden></div>
+    <!-- Plain inline script on purpose: sending a scan must work even if nothing else on this page loads. -->
+    <script>
+      (function () {
+        var $ = function (id) { return document.getElementById(id); };
+        var errBox = $("err"), status = $("scan-status"), prog = $("scan-prog"), input = $("scan-file");
+        function showErr(msg) { errBox.hidden = false; errBox.textContent += msg + "\n"; }
+        window.addEventListener("error", function (e) { showErr("Error: " + (e.message || (e.target && e.target.src) || "script failed to load")); }, true);
+        window.addEventListener("unhandledrejection", function (e) { showErr("Error: " + (e.reason && e.reason.message || e.reason)); });
+
+        input.addEventListener("change", function () {
+          var f = input.files && input.files[0];
+          if (!f) return;
+          if (!/\.(spz|ply|splat|ksplat|sog|rad)$/i.test(f.name)) {
+            status.textContent = "✕ \"" + f.name + "\" isn't a splat file. In Scaniverse use Export Model → SPZ.";
+            input.value = "";
+            return;
+          }
+          prog.hidden = false; prog.value = 0;
+          status.textContent = "Sending " + f.name + " (" + (f.size / 1e6).toFixed(1) + " MB)…";
+          var x = new XMLHttpRequest();
+          x.open("POST", "/api/scenes/upload?name=" + encodeURIComponent(f.name));
+          x.upload.onprogress = function (e) { if (e.lengthComputable) prog.value = e.loaded / e.total; };
+          x.onload = function () {
+            var j = {}; try { j = JSON.parse(x.responseText); } catch (e) {}
+            status.textContent = x.status === 200 ? "✓ " + j.name + " is on the laptop. Walk into it!" : "✕ " + (j.error || "Upload failed (" + x.status + ")");
+            prog.hidden = true; input.value = "";
+          };
+          x.onerror = function () { status.textContent = "✕ Upload failed: lost connection to the laptop"; prog.hidden = true; input.value = ""; };
+          x.send(f);
+        });
+
+        // If the gyro-remote script hasn't come up, say so instead of leaving a dead button.
+        setTimeout(function () {
+          if (!window.__pfsReady) {
+            $("start").textContent = "Gyro remote didn't load — tap to reload";
+            $("start").onclick = function () { location.reload(); };
+          }
+        }, 6000);
+      })();
+    </script>
     <script type="module" src="/src/phone.ts"></script>
   </body>
 </html>

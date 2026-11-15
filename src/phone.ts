@@ -1,6 +1,5 @@
 // iPhone page: reads the motion sensors and streams the camera pose to the laptop.
-import * as THREE from "three";
-import { connect, lensToFov, uploadScan, type Msg } from "./protocol";
+import { connect, lensToFov, type Msg } from "./protocol";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const startBtn = $("start"), ui = $("ui"), conn = $("conn"), recBtn = $("rec");
@@ -19,21 +18,31 @@ const send = connect(
   (open) => (conn.textContent = open ? "Connected" : "Reconnecting…"),
 );
 
-// Device orientation (alpha/beta/gamma) -> camera quaternion. Same maths as the
-// classic three.js DeviceOrientationControls: camera looks out of the back of the phone.
-const q = new THREE.Quaternion();
-const euler = new THREE.Euler();
-const zee = new THREE.Vector3(0, 0, 1);
-const q0 = new THREE.Quaternion();
-const q1 = new THREE.Quaternion(-Math.SQRT1_2, 0, 0, Math.SQRT1_2);
-const rad = THREE.MathUtils.degToRad;
+// Device orientation (alpha/beta/gamma) -> camera quaternion [x, y, z, w]. Same maths as the classic
+// three.js DeviceOrientationControls (camera looks out of the back of the phone), written out by hand
+// so this page stays tiny and has nothing heavy to load.
+type Q = [number, number, number, number];
+const mul = (a: Q, b: Q): Q => [
+  a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1],
+  a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0],
+  a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3],
+  a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2],
+];
+function eulerYXZ(x: number, y: number, z: number): Q {
+  const c1 = Math.cos(x / 2), c2 = Math.cos(y / 2), c3 = Math.cos(z / 2);
+  const s1 = Math.sin(x / 2), s2 = Math.sin(y / 2), s3 = Math.sin(z / 2);
+  return [s1 * c2 * c3 + c1 * s2 * s3, c1 * s2 * c3 - s1 * c2 * s3, c1 * c2 * s3 - s1 * s2 * c3, c1 * c2 * c3 + s1 * s2 * s3];
+}
+const Q1: Q = [-Math.SQRT1_2, 0, 0, Math.SQRT1_2]; // -90 deg about X
+const rad = (d: number) => (d * Math.PI) / 180;
+let q: Q = [0, 0, 0, 1];
 let gotPose = false;
 
 function onOrient(e: DeviceOrientationEvent) {
   if (e.alpha == null || e.beta == null || e.gamma == null) return;
   const orient = rad(screen.orientation?.angle ?? (window as any).orientation ?? 0);
-  euler.set(rad(e.beta), rad(e.alpha), -rad(e.gamma), "YXZ");
-  q.setFromEuler(euler).multiply(q1).multiply(q0.setFromAxisAngle(zee, -orient));
+  const screenQ: Q = [0, 0, Math.sin(-orient / 2), Math.cos(-orient / 2)];
+  q = mul(mul(eulerYXZ(rad(e.beta), rad(e.alpha), -rad(e.gamma)), Q1), screenQ);
   gotPose = true;
 }
 
@@ -57,11 +66,16 @@ recBtn.onclick = () => send({ type: recording ? "stop" : "rec" });
 
 startBtn.onclick = async () => {
   // iOS needs a user tap + HTTPS before it hands out motion data.
-  const D = DeviceOrientationEvent as any;
+  startBtn.textContent = "Asking for motion access…"; // instant feedback so the tap never looks dead
+  const D = (window as any).DeviceOrientationEvent;
   if (typeof D?.requestPermission === "function") {
-    const r = await D.requestPermission().catch(() => "denied");
-    if (r !== "granted") {
-      startBtn.textContent = "Motion access denied — reload and allow";
+    // Some browsers never answer; don't wait forever.
+    const r = await Promise.race([
+      D.requestPermission().catch(() => "denied"),
+      new Promise((res) => setTimeout(() => res("timeout"), 4000)),
+    ]);
+    if (r === "denied") {
+      startBtn.textContent = "Motion access denied. Close this tab, reopen the link and tap Allow.";
       return;
     }
   }
@@ -73,28 +87,11 @@ startBtn.onclick = async () => {
     if (!gotPose) return;
     send({
       type: "pose",
-      q: [q.x, q.y, q.z, q.w],
+      q,
       move: [...move] as [number, number, number],
       fov: lensToFov(+lens.value),
     });
   }, 1000 / 30);
 };
 
-// ---- send a Scaniverse export straight to the laptop ----
-const scanFile = $<HTMLInputElement>("scan-file"), scanStatus = $("scan-status"), scanProg = $<HTMLProgressElement>("scan-prog");
-$("scan-btn").onclick = () => scanFile.click();
-scanFile.onchange = async () => {
-  const f = scanFile.files?.[0];
-  scanFile.value = "";
-  if (!f) return;
-  scanProg.hidden = false;
-  scanProg.value = 0;
-  scanStatus.textContent = `Sending ${f.name} (${(f.size / 1e6).toFixed(1)} MB)…`;
-  try {
-    const r = await uploadScan(f, (k) => (scanProg.value = k));
-    scanStatus.textContent = `✓ ${r.name} is on the laptop. Walk into it!`;
-  } catch (e: any) {
-    scanStatus.textContent = `✕ ${e.message}`;
-  }
-  scanProg.hidden = true;
-};
+(window as any).__pfsReady = true; // tells the page's inline script that this module loaded
