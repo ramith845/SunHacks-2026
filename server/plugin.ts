@@ -6,6 +6,7 @@ import { makeGemini, planSchema, critiqueSchema, reviewSchema, SYSTEM_DP, type P
 import { startZigSim } from "./zigsim";
 import { startFreeD } from "./freed";
 import { makeScenes } from "./scenes";
+import { lanAddresses } from "./net";
 import path from "node:path";
 
 type Opts = { geminiKey?: string; geminiModel?: string; zigPort: number; freedPort: number };
@@ -34,6 +35,7 @@ export function pocketFilmSet(opts: Opts): Plugin {
   const gemini = makeGemini(opts.geminiKey, opts.geminiModel);
 
   const routes: Record<string, (b: any) => Promise<unknown>> = {
+    "/api/net": async () => ({ addresses: lanAddresses() }),
     "/api/ai/status": async () => ({ ok: !!opts.geminiKey }),
     "/api/ai/plan": async ({ script, location }) =>
       gemini(

@@ -49,7 +49,7 @@ Keys: **R** record · **Space** play · **M** mark · **C** calibrate · **WASD 
 
 ## Scans (phone → scene)
 1. Scaniverse: scan in Splat mode, then Share → Export Model → **SPZ** → Save to Files.
-2. Open the phone page (QR code in the *Setup* tab), tap **Send a scan to the laptop**, pick the file.
+2. Open the phone page (click **📱 Connect phone** on the laptop for the QR code; it follows the laptop's current IP), tap **Send a scan to the laptop**, pick the file.
 3. It loads on the laptop by itself, is saved in `public/scenes/`, and is remembered after a refresh. *Setup → Scans* lists every scan; click to switch.
 
 Dragging a `.spz` / `.ply` onto the monitor does the same. Press **F** if a scan is upside down (remembered per scan). Scaniverse scans are real-world scale, so with *World scale* at 1× a metre of walking is a metre in the scan.

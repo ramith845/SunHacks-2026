@@ -857,8 +857,6 @@ const toggleGrid = () => ((showGrid = !showGrid), gridBtn.classList.toggle("on",
 gridBtn.onclick = toggleGrid;
 $<HTMLInputElement>("t-zoom").oninput = (e) => ((pxPerSec = +(e.target as HTMLInputElement).value), renderTimeline());
 
-$("zig-ip").textContent = LAN_IP;
-$("freed-ip").textContent = LAN_IP;
 $("freed-port").textContent = String(FREED_PORT);
 const calUnit = $<HTMLSelectElement>("freed-unit");
 calUnit.value = String(freedCal.unit);
@@ -882,10 +880,37 @@ $<HTMLSelectElement>("roll").onchange = (e) => {
   rollDeg = +(e.target as HTMLSelectElement).value;
   rollQ.setFromAxisAngle(new THREE.Vector3(0, 0, 1), THREE.MathUtils.degToRad(rollDeg));
 };
-const host = ["localhost", "127.0.0.1"].includes(location.hostname) ? LAN_IP : location.hostname;
-const phoneUrl = `https://${host}${location.port ? ":" + location.port : ""}/camera.html`;
-$("url").textContent = phoneUrl;
-QRCode.toCanvas($<HTMLCanvasElement>("qr"), phoneUrl, { width: 110, margin: 1 });
+// ---- laptop address: read live from the server so it follows Wi-Fi / hotspot changes ----
+const ipSel = $<HTMLSelectElement>("ip-select");
+let ipList: { name: string; ip: string }[] = [];
+let currentIp = "";
+function showAddress(ip: string) {
+  if (ip === currentIp) return;
+  currentIp = ip;
+  const phoneUrl = `https://${ip}${location.port ? ":" + location.port : ""}/camera.html`;
+  $("url").textContent = phoneUrl;
+  $("zig-ip").textContent = $("freed-ip").textContent = ip;
+  QRCode.toCanvas($<HTMLCanvasElement>("qr"), phoneUrl, { width: 132, margin: 1 });
+}
+async function refreshAddress() {
+  const r = await fetch("/api/net").then((x) => x.json()).catch(() => null);
+  const list: typeof ipList = r?.addresses?.length ? r.addresses : [{ name: "startup", ip: LAN_IP }];
+  if (JSON.stringify(list) === JSON.stringify(ipList)) return;
+  const hadIp = !!currentIp;
+  ipList = list;
+  ipSel.innerHTML = list.map((a) => `<option value="${a.ip}">${a.ip} · ${esc(a.name)}</option>`).join("");
+  ipSel.parentElement!.hidden = list.length < 2;
+  // Keep a manual choice while it still exists; otherwise take the best guess (Wi-Fi first).
+  const picked = store.get("pfs.ip");
+  const ip = list.find((a) => a.ip === picked)?.ip ?? list[0].ip;
+  ipSel.value = ip;
+  if (hadIp && ip !== currentIp) toast(`Laptop address changed to ${ip}. Update the IP in the tracking app and rescan the QR.`, 9000);
+  showAddress(ip);
+}
+ipSel.onchange = () => (store.set("pfs.ip", ipSel.value), showAddress(ipSel.value));
+refreshAddress();
+setInterval(refreshAddress, 4000);
+$("btn-phone").onclick = () => (switchTab("setup"), $("phone-section").scrollIntoView({ block: "start" }));
 
 addEventListener("keydown", (e) => {
   if ((e.target as HTMLElement).closest("input, textarea, select")) return;
