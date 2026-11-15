@@ -1,0 +1,26 @@
+{
+  "name": "pocket-film-set",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vite build",
+    "preview": "vite preview --host"
+  },
+  "dependencies": {
+    "@sparkjsdev/spark": "^2.4.0",
+    "qrcode": "^1.5.4",
+    "three": "^0.187.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@types/qrcode": "^1.5.6",
+    "@types/three": "^0.187.0",
+    "@types/ws": "^8.18.2",
+    "@vitejs/plugin-basic-ssl": "^2.3.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8",
+    "ws": "^8.23.0"
+  }
+}

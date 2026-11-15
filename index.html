@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pocket Film Set</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/src/director/director.css" />
+  </head>
+  <body>
+    <header id="topbar">
+      <div class="brand"><span class="logo">◉</span> POCKET FILM SET</div>
+      <input id="title" spellcheck="false" />
+      <div class="chips">
+        <span class="chip" id="chip-ar" title="ARKit 6DoF from FREED Tracker or ZIG SIM Pro">AR 6DoF</span>
+        <span class="chip" id="chip-gyro" title="Phone web page, rotation only">GYRO</span>
+        <span class="chip" id="chip-ai" title="Gemini via AI Studio key">GEMINI</span>
+      </div>
+      <div class="menu">
+        <button class="btn" id="btn-phone" title="Show the QR code for the phone">📱 Connect phone</button>
+        <button class="btn" id="btn-export">Export ▾</button>
+        <div class="dropdown" id="export-menu" hidden>
+          <button data-export="csv">Shot list (CSV)</button>
+          <button data-export="blender">Blender cameras (.py)</button>
+          <button data-export="json">Project (JSON)</button>
+          <hr />
+          <button data-export="import">Import project…</button>
+          <button data-export="clear" class="danger">New sequence</button>
+        </div>
+        <input type="file" id="import-file" accept=".json" hidden />
+      </div>
+    </header>
+
+    <main id="stage">
+      <section id="monitor">
+        <canvas id="view"></canvas>
+        <canvas id="overlay"></canvas>
+        <div id="hud-tl" class="hud"><span id="rec-dot"></span><span id="tc">00:00:00:00</span><span id="mode">STBY</span></div>
+        <div id="hud-tr" class="hud"><span id="hud-lens">35mm</span><span id="hud-src">MOUSE</span></div>
+        <div id="hud-bl" class="hud"><span id="hud-shot"></span></div>
+        <div id="hud-br" class="hud"><span id="hud-pos"></span></div>
+        <div id="drop-hint" hidden>Drop a .spz / .ply scan</div>
+        <div id="toast" hidden></div>
+        <div id="cal" hidden>
+          <div class="cal-title">Calibrate rotation</div>
+          <div id="cal-text"></div>
+          <div id="cal-ang"></div>
+          <div id="cal-hint" hidden>No position is arriving from the app. Check Camera access and the X/Y/Z outputs in FREED Tracker (Setup tab has details), or press Skip.</div>
+          <button class="btn" id="cal-cancel">Cancel</button>
+        </div>
+      </section>
+
+      <aside id="side">
+        <nav class="tabs">
+          <button data-tab="inspector" class="on">Shot</button>
+          <button data-tab="ai">AI Studio</button>
+          <button data-tab="setup">Setup</button>
+        </nav>
+
+        <div class="tab" id="tab-inspector">
+          <div id="insp-empty" class="muted">Select a shot in the timeline, or press <kbd>R</kbd> to record one.</div>
+          <div id="insp" hidden>
+            <img id="insp-thumb" alt="" />
+            <label>Name <input id="insp-name" /></label>
+            <div class="two">
+              <label>Size <select id="insp-type"></select></label>
+              <label>Move <select id="insp-move"></select></label>
+            </div>
+            <div class="two">
+              <label>Lens <input id="insp-lens" readonly /></label>
+              <label>Length <input id="insp-len" readonly /></label>
+            </div>
+            <div id="insp-trim">
+              <label>In <input type="range" id="insp-in" min="0" step="10" /></label>
+              <label>Out <input type="range" id="insp-out" min="0" step="10" /></label>
+            </div>
+            <div id="insp-plan" class="plan" hidden></div>
+            <label>Notes <textarea id="insp-notes" rows="2"></textarea></label>
+            <div class="row">
+              <button class="btn" id="insp-play">▶ Play shot</button>
+              <button class="btn" id="insp-crit">✦ AI critique</button>
+              <button class="btn danger" id="insp-del">Delete</button>
+            </div>
+            <div id="insp-crit-out" class="crit" hidden></div>
+          </div>
+        </div>
+
+        <div class="tab" id="tab-ai" hidden>
+          <p class="muted">Paste a scene or a few lines of script. Gemini breaks it into a shot plan you can then shoot one by one.</p>
+          <textarea id="ai-script" rows="6" placeholder="INT. LIBRARY - NIGHT&#10;Maya slips between the stacks, phone light in hand. Footsteps behind her. She freezes."></textarea>
+          <label>Location <input id="ai-location" placeholder="e.g. ASU library lobby scan" /></label>
+          <button class="btn primary" id="ai-plan">✦ Generate shot plan</button>
+          <hr />
+          <button class="btn" id="ai-review">✦ Review my sequence</button>
+          <div id="ai-out" class="crit" hidden></div>
+        </div>
+
+        <div class="tab" id="tab-setup" hidden>
+          <h4 id="phone-section">Connect the phone</h4>
+          <div class="pair"><canvas id="qr"></canvas><div>Scan with the iPhone camera to send scans or use it as a gyro remote.<br /><code id="url"></code></div></div>
+          <label hidden>Laptop address (pick the Wi-Fi one if the QR doesn't open) <select id="ip-select"></select></label>
+          <h4>Walk-around tracking · free</h4>
+          <ol class="steps">
+            <li>Install <b>FREED Tracker</b> (free) on the iPhone.</li>
+            <li>Receiver IP <code id="freed-ip"></code>, port <code id="freed-port"></code>. Tap Start.</li>
+            <li>Point the phone at the screen, tap <b>Set Zero</b> in the app, then press <kbd>M</kbd> here. Walk.</li>
+            <li>Keep pans and tilts under about 80°: past that FREED Tracker's angles break. If the view gets stuck, Set Zero again.</li>
+            <li>The free version sends for 3 min per Start: just tap Start again.</li>
+          </ol>
+          <div class="two">
+            <label>FreeD axes <select id="freed-axes">
+              <option value="freedtracker">FREED Tracker (X up, Z fwd)</option>
+              <option value="xyz-zup">X right, Y fwd, Z up</option>
+              <option value="xyz-yup">X right, Y up, Z back</option>
+              <option value="unreal">X fwd, Y right, Z up</option>
+            </select></label>
+            <div class="checks">
+              <label class="check"><input type="checkbox" id="freed-pan" /> Flip pan</label>
+              <label class="check"><input type="checkbox" id="freed-tilt" /> Flip tilt</label>
+              <label class="check"><input type="checkbox" id="freed-swap" /> Swap tilt and roll</label>
+              <label class="check"><input type="checkbox" id="freed-side" /> Flip sideways</label>
+            </div>
+          </div>
+          <label>Position units <select id="freed-unit">
+            <option value="1">Standard FreeD</option>
+            <option value="10">App sends cm (×10)</option>
+            <option value="1000">App sends m (×1000)</option>
+            <option value="0.1">÷10</option>
+          </select></label>
+          <p class="muted">These defaults match FREED Tracker, so you shouldn't need to calibrate. If stepping sideways goes the wrong way, tick <i>Flip sideways</i>.</p>
+          <h4>Something moving wrong?</h4>
+          <p class="muted">Do the move that looks wrong, then save. It keeps the last 90 seconds of raw tracking and what the camera did.</p>
+          <label>What you did / what went wrong <input id="log-note" placeholder="e.g. walked 2 m forward, camera went sideways" /></label>
+          <button class="btn" id="log-save">💾 Save tracking log (L)</button>
+          <h4>Live tracking data</h4>
+          <pre id="diag">No tracking data arriving.</pre>
+          <p class="muted">Walk 1 m: X/Y/Z should change by about 1.00. If they stay frozen, in FREED Tracker allow <b>Camera</b> access (iPhone Settings → FREED Tracker), switch on the <b>X / Y / Z</b> outputs, and make sure <b>Hold Position</b> isn't pressed. If they change by 0.10 or 0.001, pick a different <i>Position units</i>.</p>
+          <h4>Walk-around tracking · ZIG SIM Pro ($3.99)</h4>
+          <ol class="steps">
+            <li>Install <b>ZIG SIM Pro</b> on the iPhone.</li>
+            <li>Settings: Protocol <b>UDP</b>, Format <b>JSON</b>, IP <code id="zig-ip"></code>, Port <code id="zig-port"></code>, rate <b>60</b>.</li>
+            <li>Sensor: <b>ARKit</b>, mode <b>DEVICE</b>. Start.</li>
+            <li>Stand where the shot begins, press <kbd>M</kbd> (Set mark).</li>
+          </ol>
+          <div class="two">
+            <label>World scale <input type="range" id="scale" min="0.25" max="8" step="0.05" value="1" /><span id="scale-v">1.00×</span></label>
+            <label>AR roll fix <select id="roll"><option value="0">0°</option><option value="90">90°</option><option value="180">180°</option><option value="270">270°</option></select></label>
+          </div>
+          <h4>Rotation wrong?</h4>
+          <p class="muted">Press <kbd>C</kbd> or <b>⟲ Calibrate</b>, then follow the moves on screen. With FREED Tracker that's tilt up, turn right, lean right: it watches which number moves for each and maps them, whatever way you hold the phone. Remembered on this laptop.</p>
+          <button class="btn" id="cal-reset">Reset calibration</button>
+          <h4>Scans</h4>
+          <p class="muted">On the phone page (QR above) tap <b>Send a scan to the laptop</b> and pick your Scaniverse export. It loads here by itself. You can also drag a file onto the monitor. <kbd>F</kbd> flips an upside-down scan.</p>
+          <div id="scene-list"></div>
+          <h4>Keys</h4>
+          <p class="keys"><kbd>R</kbd>/<kbd>PgDn</kbd> record · <kbd>Space</kbd> play sequence · <kbd>M</kbd> set mark · <kbd>C</kbd> calibrate · <kbd>L</kbd> save tracking log · <kbd>WASD QE</kbd> dolly · drag to look · <kbd>[</kbd> <kbd>]</kbd> lens · <kbd>G</kbd> grid · <kbd>Del</kbd> delete shot</p>
+        </div>
+      </aside>
+    </main>
+
+    <div id="transport">
+      <button class="tbtn" id="t-start" title="Go to start">⏮</button>
+      <button class="tbtn" id="t-play" title="Play sequence (Space)">▶</button>
+      <button class="tbtn rec" id="t-rec" title="Record (R)">●</button>
+      <span class="sep"></span>
+      <button class="btn" id="t-mark" title="Set mark (M)">⌖ Set mark</button>
+      <button class="btn" id="t-cal" title="Calibrate phone rotation (C)">⟲ Calibrate</button>
+      <button class="btn" id="t-flip" title="Turn an upside-down scan the right way up (F)">⇅ Flip scan</button>
+      <label class="lens">Lens <input type="range" id="t-lens" min="14" max="135" value="35" /><b id="t-lens-v">35mm</b></label>
+      <select id="t-aspect" title="Frame lines">
+        <option value="2.39">2.39 : 1</option>
+        <option value="1.85">1.85 : 1</option>
+        <option value="1.778" selected>16 : 9</option>
+        <option value="1.333">4 : 3</option>
+        <option value="0.5625">9 : 16</option>
+      </select>
+      <button class="btn toggle on" id="t-grid" title="Thirds grid (G)">#</button>
+      <span class="grow"></span>
+      <span id="seq-info" class="muted"></span>
+      <label class="zoom">Zoom <input type="range" id="t-zoom" min="20" max="200" value="70" /></label>
+    </div>
+
+    <section id="timeline">
+      <div id="ruler"></div>
+      <div id="track"></div>
+      <div id="playhead"></div>
+    </section>
+
+    <script type="module" src="/src/director/main.ts"></script>
+  </body>
+</html>
