@@ -850,6 +850,7 @@ $("t-mark").onclick = () => setMark();
 $("t-cal").onclick = () => startCalibration();
 $("cal-cancel").onclick = () => (cal && cal.step === 4 ? finishCalibration() : ((cal = null), ($("cal").hidden = true)));
 $("cal-reset").onclick = () => resetCalibration();
+$("log-save").onclick = () => saveTrackLog();
 $<HTMLInputElement>("t-lens").oninput = (e) => setLens(+(e.target as HTMLInputElement).value);
 $<HTMLSelectElement>("t-aspect").onchange = (e) => ((aspect = +(e.target as HTMLSelectElement).value), computeFrame(), applyLens());
 const gridBtn = $("t-grid");
@@ -920,6 +921,7 @@ addEventListener("keydown", (e) => {
   else if (k === " ") (e.preventDefault(), togglePlay());
   else if (k === "m") setMark();
   else if (k === "c") startCalibration();
+  else if (k === "l") saveTrackLog();
   else if (k === "f") toggleFlip();
   else if (k === "g") toggleGrid();
   else if (k === "[") setLens(lensMm / 1.1);
@@ -928,6 +930,29 @@ addEventListener("keydown", (e) => {
   else if (k === "escape") select(null);
 });
 addEventListener("keyup", (e) => keys.delete(e.key.toLowerCase()));
+
+// What the virtual camera actually did over the last 90 s (pairs with the server's raw input log).
+const camLog: { t: number; p: number[]; q: number[]; src: string; lens: number }[] = [];
+let camLogNext = 0;
+function logCamera(t: number) {
+  if (t < camLogNext) return;
+  camLogNext = t + 33;
+  camLog.push({ t: Date.now(), p: camera.position.toArray().map((v) => +v.toFixed(4)), q: camera.quaternion.toArray().map((v) => +v.toFixed(5)), src: source(), lens: Math.round(lensMm) });
+  while (camLog.length && Date.now() - camLog[0].t > 90_000) camLog.shift();
+}
+async function saveTrackLog() {
+  const note = ($<HTMLInputElement>("log-note").value || "").trim();
+  const app = {
+    note, scale, rollDeg, freedCal, scene: sceneKey, flipped, ua: navigator.userAgent,
+    calQ: Object.fromEntries(Object.entries(calQ).map(([k, v]) => [k, v.toArray()])),
+    posFix: Object.fromEntries(Object.entries(posFix).map(([k, v]) => [k, v.toArray()])),
+    arAlign: arAlign.toArray(), arOrigin: arOrigin.toArray(), anchor: anchor.toArray(),
+    camera: camLog,
+  };
+  const r = await fetch("/api/tracklog", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ note, app }) })
+    .then((x) => x.json()).catch((e) => ({ error: String(e) }));
+  toast(r.error ? `Couldn't save log: ${r.error}` : `Saved ${r.file} (${r.samples} tracking samples). Tell Claude it's saved.`, 9000);
+}
 
 let diagNext = 0;
 function renderDiag(t: number) {
@@ -1021,6 +1046,7 @@ renderer.setAnimationLoop(() => {
   hs.classList.toggle("ar", src.startsWith("AR") && !posFrozen());
   hs.classList.toggle("warn", posFrozen());
   renderDiag(t);
+  logCamera(t);
   $("chip-ar").classList.toggle("live", arLive());
   $("chip-gyro").classList.toggle("live", gyroLive());
   const p = camera.position;

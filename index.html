@@ -124,6 +124,10 @@
             <option value="0.1">÷10</option>
           </select></label>
           <p class="muted">Then press <kbd>C</kbd> to calibrate (5 quick moves). Only change these if calibration says the step looked vertical.</p>
+          <h4>Something moving wrong?</h4>
+          <p class="muted">Do the move that looks wrong, then save. It keeps the last 90 seconds of raw tracking and what the camera did.</p>
+          <label>What you did / what went wrong <input id="log-note" placeholder="e.g. walked 2 m forward, camera went sideways" /></label>
+          <button class="btn" id="log-save">💾 Save tracking log (L)</button>
           <h4>Live tracking data</h4>
           <pre id="diag">No tracking data arriving.</pre>
           <p class="muted">Walk 1 m: X/Y/Z should change by about 1.00. If they stay frozen, in FREED Tracker allow <b>Camera</b> access (iPhone Settings → FREED Tracker), switch on the <b>X / Y / Z</b> outputs, and make sure <b>Hold Position</b> isn't pressed. If they change by 0.10 or 0.001, pick a different <i>Position units</i>.</p>
@@ -145,7 +149,7 @@
           <p class="muted">On the phone page (QR above) tap <b>Send a scan to the laptop</b> and pick your Scaniverse export. It loads here by itself. You can also drag a file onto the monitor. <kbd>F</kbd> flips an upside-down scan.</p>
           <div id="scene-list"></div>
           <h4>Keys</h4>
-          <p class="keys"><kbd>R</kbd>/<kbd>PgDn</kbd> record · <kbd>Space</kbd> play sequence · <kbd>M</kbd> set mark · <kbd>C</kbd> calibrate · <kbd>WASD QE</kbd> dolly · drag to look · <kbd>[</kbd> <kbd>]</kbd> lens · <kbd>G</kbd> grid · <kbd>Del</kbd> delete shot</p>
+          <p class="keys"><kbd>R</kbd>/<kbd>PgDn</kbd> record · <kbd>Space</kbd> play sequence · <kbd>M</kbd> set mark · <kbd>C</kbd> calibrate · <kbd>L</kbd> save tracking log · <kbd>WASD QE</kbd> dolly · drag to look · <kbd>[</kbd> <kbd>]</kbd> lens · <kbd>G</kbd> grid · <kbd>Del</kbd> delete shot</p>
         </div>
       </aside>
     </main>

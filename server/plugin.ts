@@ -8,6 +8,7 @@ import { startFreeD } from "./freed";
 import { makeScenes } from "./scenes";
 import { lanAddresses } from "./net";
 import path from "node:path";
+import fs from "node:fs";
 
 type Opts = { geminiKey?: string; geminiModel?: string; zigPort: number; freedPort: number };
 
@@ -34,7 +35,17 @@ const img = (dataUrl: string): Part => {
 export function pocketFilmSet(opts: Opts): Plugin {
   const gemini = makeGemini(opts.geminiKey, opts.geminiModel);
 
+  let trackRing: { t: number; m: string }[] = [];
   const routes: Record<string, (b: any) => Promise<unknown>> = {
+    "/api/tracklog": async (body) => {
+      const dir = path.resolve(process.cwd(), "logs");
+      fs.mkdirSync(dir, { recursive: true });
+      const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+      const file = path.join(dir, `track-${stamp}.json`);
+      const raw = trackRing.map((r) => ({ t: r.t, ...JSON.parse(r.m) }));
+      fs.writeFileSync(file, JSON.stringify({ savedAt: new Date().toISOString(), note: body?.note ?? "", app: body?.app ?? {}, raw }, null, 0));
+      return { file: path.relative(process.cwd(), file), samples: raw.length };
+    },
     "/api/net": async () => ({ addresses: lanAddresses() }),
     "/api/ai/status": async () => ({ ok: !!opts.geminiKey }),
     "/api/ai/plan": async ({ script, location }) =>
@@ -83,7 +94,16 @@ export function pocketFilmSet(opts: Opts): Plugin {
     if (!httpServer) return;
     // ---- relay ----
     const wss = new WebSocketServer({ noServer: true });
+    // Last 90 s of raw tracking input, so a bad session can be saved and inspected.
+    const ring: { t: number; m: string }[] = [];
+    const remember = (m: string) => {
+      const t = Date.now();
+      ring.push({ t, m });
+      while (ring.length && t - ring[0].t > 90_000) ring.shift();
+    };
+    trackRing = ring;
     const broadcast = (data: string, except?: WebSocket) => {
+      if (data.startsWith('{"type":"freed"') || data.startsWith('{"type":"arpose"') || data.startsWith('{"type":"pose"')) remember(data);
       for (const c of wss.clients) if (c !== except && c.readyState === WebSocket.OPEN) c.send(data);
     };
     httpServer.on("upgrade", (req: any, socket: any, head: any) => {

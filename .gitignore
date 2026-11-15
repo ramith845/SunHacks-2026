@@ -5,3 +5,4 @@ node_modules/
 dist/
 public/scenes/*
 !public/scenes/README.md
+logs/
