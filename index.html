@@ -13,7 +13,7 @@
       <div class="brand"><span class="logo">◉</span> POCKET FILM SET</div>
       <input id="title" spellcheck="false" />
       <div class="chips">
-        <span class="chip" id="chip-ar" title="ARKit 6DoF from ZIG SIM Pro">AR 6DoF</span>
+        <span class="chip" id="chip-ar" title="ARKit 6DoF from FREED Tracker or ZIG SIM Pro">AR 6DoF</span>
         <span class="chip" id="chip-gyro" title="Phone web page, rotation only">GYRO</span>
         <span class="chip" id="chip-ai" title="Gemini via AI Studio key">GEMINI</span>
       </div>
@@ -89,7 +89,25 @@
         </div>
 
         <div class="tab" id="tab-setup" hidden>
-          <h4>Walk-around tracking (6DoF)</h4>
+          <h4>Walk-around tracking · free</h4>
+          <ol class="steps">
+            <li>Install <b>FREED Tracker</b> (free) on the iPhone.</li>
+            <li>Receiver IP <code id="freed-ip"></code>, port <code id="freed-port"></code>. Tap Start.</li>
+            <li>Press <kbd>M</kbd> where the shot starts and walk. Free version sends for 3 min per Start: just tap Start again.</li>
+          </ol>
+          <div class="two">
+            <label>FreeD axes <select id="freed-axes">
+              <option value="xyz-zup">X right, Y fwd, Z up</option>
+              <option value="xyz-yup">X right, Y up, Z back</option>
+              <option value="unreal">X fwd, Y right, Z up</option>
+            </select></label>
+            <div class="checks">
+              <label class="check"><input type="checkbox" id="freed-pan" /> Flip pan</label>
+              <label class="check"><input type="checkbox" id="freed-tilt" /> Flip tilt</label>
+            </div>
+          </div>
+          <p class="muted">Walk forward: the camera should move forward. If it goes sideways or backwards, change the axes. If turning right turns the view left, flip pan.</p>
+          <h4>Walk-around tracking · ZIG SIM Pro ($3.99)</h4>
           <ol class="steps">
             <li>Install <b>ZIG SIM Pro</b> on the iPhone.</li>
             <li>Settings: Protocol <b>UDP</b>, Format <b>JSON</b>, IP <code id="zig-ip"></code>, Port <code id="zig-port"></code>, rate <b>60</b>.</li>

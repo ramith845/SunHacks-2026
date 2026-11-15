@@ -3,7 +3,7 @@
 import * as THREE from "three";
 import { SparkRenderer, SplatMesh } from "@sparkjsdev/spark";
 import QRCode from "qrcode";
-import { connect, LAN_IP, ZIG_PORT, lensToFov, fovToLens, type Msg } from "../protocol";
+import { connect, LAN_IP, ZIG_PORT, FREED_PORT, lensToFov, fovToLens, type Msg, type FreeDMsg, type Vec3, type Quat } from "../protocol";
 import { load, save, uid, shotLen, defaultType, classifyMove, sampleFrame, SHOT_TYPES, MOVES, type Shot, type Frame } from "./shots";
 import { exportCsv, exportJson, exportBlender, timecode } from "./export";
 import { aiStatus, aiPlan, aiCritique, aiReview } from "./ai";
@@ -160,7 +160,7 @@ const gyroMove = new THREE.Vector3();
 const now = () => performance.now();
 const arLive = () => now() - arLast < 600;
 const gyroLive = () => now() - gyroLast < 1000;
-const source = () => (arLive() ? "AR 6DoF" : gyroLive() ? "GYRO 3DoF" : "MOUSE");
+const source = () => (arLive() ? `AR 6DoF · ${arSrc}` : gyroLive() ? "GYRO 3DoF" : "MOUSE");
 
 function setMark(silent = false) {
   // Whatever the camera shows right now becomes the start of the real-world move.
@@ -175,16 +175,46 @@ function setMark(silent = false) {
   if (!silent) toast("Mark set: this is where your move starts");
 }
 
+let arSrc = "";
+function onAr(p: Vec3, q: Quat, src: string) {
+  const first = now() - arLast > 2000;
+  arLast = now();
+  arSrc = src;
+  arP.fromArray(p);
+  arQ.fromArray(q);
+  if (first) (setMark(true), toast(`${src} tracking connected: walk to move the camera`));
+  targetP.copy(arP).sub(arOrigin).applyQuaternion(arAlign).multiplyScalar(scale).add(anchor);
+  targetQ.copy(arAlign).multiply(arQ).multiply(rollQ);
+}
+
+// FreeD apps disagree on axes, so Setup lets you pick the convention and flip signs.
+type FreeDCal = { axes: "xyz-zup" | "xyz-yup" | "unreal"; flipPan: boolean; flipTilt: boolean };
+const freedCal: FreeDCal = (() => {
+  try {
+    return { axes: "xyz-zup", flipPan: false, flipTilt: false, ...JSON.parse(localStorage.getItem("pfs.freed") ?? "{}") };
+  } catch {
+    return { axes: "xyz-zup", flipPan: false, flipTilt: false };
+  }
+})();
+const d2r = THREE.MathUtils.degToRad;
+const fq = new THREE.Quaternion(), fe = new THREE.Euler();
+function freedToPose(m: FreeDMsg): [Vec3, Quat] {
+  // three.js: x right, y up, -z forward. Pan right is negative yaw here.
+  const p: Vec3 =
+    freedCal.axes === "xyz-yup" ? [m.x, m.y, m.z] // ARKit-style already
+    : freedCal.axes === "unreal" ? [m.y, m.z, -m.x] // X forward, Y right, Z up
+    : [m.x, m.z, -m.y]; // X right, Y forward, Z up (FreeD default)
+  const pan = (freedCal.flipPan ? 1 : -1) * m.pan;
+  const tilt = (freedCal.flipTilt ? -1 : 1) * m.tilt;
+  fe.set(d2r(tilt), d2r(pan), d2r(m.roll), "YXZ");
+  fq.setFromEuler(fe);
+  return [p, [fq.x, fq.y, fq.z, fq.w]];
+}
+
 function onMsg(m: Msg) {
-  if (m.type === "arpose") {
-    const first = now() - arLast > 2000;
-    arLast = now();
-    arP.fromArray(m.p);
-    arQ.fromArray(m.q);
-    if (first) (setMark(true), toast("ARKit tracking connected: walk to move the camera"));
-    targetP.copy(arP).sub(arOrigin).applyQuaternion(arAlign).multiplyScalar(scale).add(anchor);
-    targetQ.copy(arAlign).multiply(arQ).multiply(rollQ);
-  } else if (m.type === "pose") {
+  if (m.type === "arpose") onAr(m.p, m.q, "ZIG SIM");
+  else if (m.type === "freed") onAr(...freedToPose(m), "FreeD");
+  else if (m.type === "pose") {
     const first = now() - gyroLast > 2000;
     gyroLast = now();
     gyroQ.fromArray(m.q);
@@ -629,6 +659,18 @@ gridBtn.onclick = toggleGrid;
 $<HTMLInputElement>("t-zoom").oninput = (e) => ((pxPerSec = +(e.target as HTMLInputElement).value), renderTimeline());
 
 $("zig-ip").textContent = LAN_IP;
+$("freed-ip").textContent = LAN_IP;
+$("freed-port").textContent = String(FREED_PORT);
+const calAxes = $<HTMLSelectElement>("freed-axes"), calPan = $<HTMLInputElement>("freed-pan"), calTilt = $<HTMLInputElement>("freed-tilt");
+calAxes.value = freedCal.axes;
+calPan.checked = freedCal.flipPan;
+calTilt.checked = freedCal.flipTilt;
+const saveCal = () => {
+  Object.assign(freedCal, { axes: calAxes.value, flipPan: calPan.checked, flipTilt: calTilt.checked });
+  try { localStorage.setItem("pfs.freed", JSON.stringify(freedCal)); } catch {}
+  if (arLive()) setMark(true);
+};
+calAxes.onchange = calPan.onchange = calTilt.onchange = saveCal;
 $("zig-port").textContent = String(ZIG_PORT);
 $<HTMLInputElement>("scale").oninput = (e) => {
   scale = +(e.target as HTMLInputElement).value;

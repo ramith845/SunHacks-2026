@@ -1,8 +1,10 @@
 // Messages between the phone (/camera.html), the ZIG SIM bridge and the laptop (/). Keep them tiny.
 declare const __LAN_IP__: string;
 declare const __ZIG_PORT__: number;
+declare const __FREED_PORT__: number;
 export const LAN_IP = __LAN_IP__;
 export const ZIG_PORT = __ZIG_PORT__;
+export const FREED_PORT = __FREED_PORT__;
 
 export type Vec3 = [number, number, number];
 export type Quat = [number, number, number, number];
@@ -14,9 +16,12 @@ export type PoseMsg = {
   fov: number; // vertical field of view in degrees
 };
 export type ArPoseMsg = { type: "arpose"; p: Vec3; q: Quat; src: string }; // ARKit world tracking (6DoF), metres
+// FreeD: degrees and metres, FreeD axes (X/Y on the floor, Z up)
+export type FreeDMsg = { type: "freed"; pan: number; tilt: number; roll: number; x: number; y: number; z: number };
 export type Msg =
   | PoseMsg
   | ArPoseMsg
+  | FreeDMsg
   | { type: "mark" } // "where I stand now = where the camera is now"
   | { type: "rec" }
   | { type: "stop" }

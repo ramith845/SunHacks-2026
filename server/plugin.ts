@@ -4,8 +4,9 @@ import { WebSocketServer, WebSocket } from "ws";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { makeGemini, planSchema, critiqueSchema, reviewSchema, SYSTEM_DP, type Part } from "./gemini";
 import { startZigSim } from "./zigsim";
+import { startFreeD } from "./freed";
 
-type Opts = { geminiKey?: string; geminiModel?: string; zigPort: number };
+type Opts = { geminiKey?: string; geminiModel?: string; zigPort: number; freedPort: number };
 
 const readBody = (req: IncomingMessage) =>
   new Promise<any>((res, rej) => {
@@ -93,7 +94,9 @@ export function pocketFilmSet(opts: Opts): Plugin {
       (pose) => broadcast(JSON.stringify({ type: "arpose", p: pose.p, q: pose.q, src: "zigsim" })),
       log,
     );
-    httpServer.on("close", stop);
+    // ---- FreeD (free "FREED Tracker" app and any virtual-production tracker) ----
+    const stopFreeD = startFreeD(opts.freedPort, (f) => broadcast(JSON.stringify({ type: "freed", ...f })), log);
+    httpServer.on("close", () => (stop(), stopFreeD()));
     // ---- AI endpoints ----
     middlewares.use(async (req: IncomingMessage, res: ServerResponse, next: () => void) => {
       const route = routes[(req.url ?? "").split("?")[0]];

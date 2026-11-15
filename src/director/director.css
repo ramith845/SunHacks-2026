@@ -112,3 +112,6 @@ body.playing #t-play { color: var(--accent); }
 #playhead { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--rec); pointer-events: none; display: none; }
 body.playing #playhead { display: block; }
 .empty-track { position: absolute; left: 16px; top: 44px; color: var(--muted); }
+.checks { display: flex; flex-direction: column; justify-content: flex-end; gap: 6px; }
+.tab label.check { flex-direction: row; align-items: center; gap: 6px; color: var(--text); }
+.tab label.check input { width: auto; }

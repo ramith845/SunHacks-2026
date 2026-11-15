@@ -19,19 +19,23 @@ Open **https://localhost:5173** on the laptop and click past the self-signed cer
 
 | Mode | What moves the camera | Needs |
 |---|---|---|
-| **AR 6DoF** (recommended) | You walk, turn and crouch with the iPhone; ARKit world tracking | ZIG SIM Pro ($3.99, App Store) |
+| **AR 6DoF, free** (recommended) | You walk, turn and crouch with the iPhone; ARKit world tracking | **FREED Tracker** (free on the App Store) |
+| AR 6DoF, paid | Same, via ZIG SIM's ARKit stream | ZIG SIM Pro ($3.99) |
 | Gyro 3DoF | Turning the phone; pads to dolly | Just the browser (QR code in *Setup*) |
 | Mouse | Drag to look, WASD/QE to dolly | Nothing |
 
-iPhone browsers (Safari and Chrome both use WebKit) have no WebXR, so a web page can't get the phone's position. ZIG SIM Pro runs ARKit and streams the phone's position + rotation to the laptop.
+iPhone browsers (Safari and Chrome both use WebKit) have no WebXR, so a web page can't get the phone's position. A tracking app runs ARKit and streams the phone's position + rotation to the laptop.
 
-**ZIG SIM Pro settings** (the *Setup* tab shows your exact IP):
-- Protocol **UDP**, Format **JSON**, IP = the laptop's Wi-Fi IP, Port **50000**, rate **60**
-- Sensor **ARKit**, mode **DEVICE**, then start
-- On the laptop press **M** (*Set mark*) where the shot starts. *World scale* makes 1 m of walking cover more of the scene. If the image is rolled sideways, change *AR roll fix*.
-- Windows: allow Node through the firewall on **private** networks, or UDP won't arrive.
+**FREED Tracker (free)**: it sends the standard FreeD camera-tracking packet over UDP.
+- Receiver IP = the laptop's Wi-Fi IP (shown in *Setup*), port **40000**, then Start.
+- The free tier sends for 3 minutes per Start; tap Start again when it stops.
+- Walk forward once: the camera should move forward. If not, change *FreeD axes* in Setup; if turning right turns the view left, tick *Flip pan*.
 
-While ZIG SIM is open on the phone, record from the laptop: **R**, **PageDown** (a presentation clicker works) or the ● button.
+**ZIG SIM Pro ($3.99)**: Protocol **UDP**, Format **JSON**, port **50000**, rate **60**, Sensor **ARKit** in **DEVICE** mode.
+
+For both: press **M** (*Set mark*) on the laptop where the shot starts. *World scale* makes 1 m of walking cover more of the scene. Windows: allow Node through the firewall on **private** networks, or UDP won't arrive.
+
+While the tracking app is open on the phone, record from the laptop: **R**, **PageDown** (a presentation clicker works) or the ● button.
 
 ## Making a sequence
 
@@ -51,6 +55,7 @@ Export `.spz` or `.ply` from Scaniverse and drag it onto the monitor, or put it 
 index.html, src/director/   laptop app: main.ts (scene, camera, timeline, UI), shots.ts, ai.ts, export.ts
 camera.html, src/phone.ts    iPhone web remote (gyro 3DoF)
 server/plugin.ts             dev-server plugin: WebSocket relay, Gemini endpoints
+server/freed.ts              FreeD D1 receiver (FREED Tracker, free)
 server/zigsim.ts             ARKit pose from ZIG SIM Pro over UDP (JSON or OSC)
 server/gemini.ts             Gemini calls + response schemas (key stays on the server)
 ```
