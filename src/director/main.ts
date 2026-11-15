@@ -290,7 +290,72 @@ const CAL_STEPS: CalStep[] = [
   { text: "Point at the screen again, take one big step TOWARD it, and hold", test: () => !!cal && rawP.distanceTo(cal.p0) > 0.35 },
 ];
 let cal: { step: number; ref: THREE.Quaternion; q0: THREE.Quaternion; tiltAxis?: THREE.Vector3; stableSince: number; last: THREE.Quaternion; p0: THREE.Vector3; lastP: THREE.Vector3; stepStart: number } | null = null;
+// FreeD axis check: watch which raw field moves for each gesture. Works whatever the app's labels or hold.
+const AXIS_STEPS = [
+  { text: "Point the phone straight at the screen and hold still" },
+  { text: "Tilt the phone UP about 30° and hold", key: "tilt" as const },
+  { text: "Point it back at the screen and hold" },
+  { text: "Turn the phone RIGHT about 30° and hold", key: "pan" as const },
+  { text: "Point it back at the screen and hold" },
+  { text: "Lean the phone RIGHT about 30° (like turning a steering wheel clockwise) and hold", key: "roll" as const },
+];
+let axisCal: { step: number; base: Record<Field, number>; map: Partial<AxisMap>; stableSince: number; last: Record<Field, number> } | null = null;
+const freedFields = (): Record<Field, number> | null => (diag.freed ? { pan: diag.freed.pan, tilt: diag.freed.tilt, roll: diag.freed.roll } : null);
+const angDiff = (a: number, b: number) => ((((a - b) % 360) + 540) % 360) - 180;
+function startAxisCheck() {
+  const f = freedFields();
+  if (!f || !arLive()) return toast("Start FREED Tracker first, then run the axis check");
+  axisCal = { step: 0, base: f, map: {}, stableSince: now(), last: f };
+  $("cal").hidden = false;
+}
+function tickAxisCheck() {
+  const f = freedFields();
+  if (!axisCal || !f) return;
+  const fields: Field[] = ["pan", "tilt", "roll"];
+  if (fields.some((k) => Math.abs(f[k]) >= 255.9)) {
+    $("cal-text").textContent = "Angles are stuck: tap Set Zero in FREED Tracker while pointing at the screen";
+    $("cal-ang").textContent = "";
+    axisCal.step = 0;
+    return;
+  }
+  if (fields.some((k) => Math.abs(angDiff(f[k], axisCal!.last[k])) > 2)) (axisCal.stableSince = now()), (axisCal.last = f);
+  const still = now() - axisCal.stableSince > 600;
+  const step = AXIS_STEPS[axisCal.step];
+  const used = Object.values(axisCal.map).map((e) => e![0]);
+  const free = fields.filter((k) => !used.includes(k));
+  const d = (k: Field) => angDiff(f[k], axisCal!.base[k]);
+  const biggest = free.reduce((a, b) => (Math.abs(d(b)) > Math.abs(d(a)) ? b : a));
+  const moved = Math.max(...fields.map((k) => Math.abs(d(k))));
+  $("cal-text").textContent = `${axisCal.step + 1}/${AXIS_STEPS.length} · ${step.text}`;
+  $("cal-ang").textContent = axisCal.step === 0 ? (still ? "✓" : "…") : `${moved.toFixed(0)}°`;
+  $("cal-cancel").textContent = "Cancel";
+  if (!still) return;
+  if (axisCal.step === 0 || !step.key) {
+    if (moved > 10) return; // wait until it's back near the start
+    axisCal.base = f;
+  } else {
+    if (Math.abs(d(biggest)) < 18) return;
+    axisCal.map[step.key] = [biggest, Math.sign(d(biggest))];
+    if (step.key === "roll") {
+      freedCal.map = axisCal.map as AxisMap;
+      Object.assign(freedCal, { flipPan: false, flipTilt: false, swapTR: false });
+      saveFreedCal();
+      delete calQ["FreeD"];
+      saveCalibration();
+      resetFreedFilters();
+      axisCal = null;
+      $("cal").hidden = true;
+      setMark(true);
+      const m = freedCal.map;
+      return toast(`Axes learned: tilt = ${m.tilt[0]}, turn = ${m.pan[0]}, lean = ${m.roll[0]}. Marked: walk and look around.`, 8000);
+    }
+  }
+  axisCal.step++;
+  axisCal.stableSince = now();
+}
+
 function startCalibration() {
+  if (arSrc === "FreeD" && arLive()) return startAxisCheck();
   if (!arLive() && !gyroLive()) return toast("Start your tracking app (or the phone page) first, then calibrate");
   calYaw = yawOf(camera.quaternion);
   calPos.copy(camera.position);
@@ -378,6 +443,8 @@ function finishCalibration(markNow = false, warn?: string) {
 function resetCalibration() {
   for (const k of Object.keys(calQ)) delete calQ[k];
   for (const k of Object.keys(posFix)) delete posFix[k];
+  delete freedCal.map;
+  saveFreedCal();
   try { localStorage.removeItem("pfs.cal2"); localStorage.removeItem("pfs.calpos2"); } catch {}
   toast("Rotation calibration cleared");
 }
@@ -385,7 +452,10 @@ function resetCalibration() {
 // FreeD apps disagree on axes, so Setup lets you pick the convention and flip signs.
 // Default = what FREED Tracker actually sends (measured from Ramith's logs, Nov 15):
 // after Set Zero, walking forward is +Z, standing up is +X, sideways is Y; pan right +, tilt up +.
-type FreeDCal = { axes: "freedtracker" | "xyz-zup" | "xyz-yup" | "unreal"; flipPan: boolean; flipTilt: boolean; flipSide: boolean; swapTR: boolean; unit: number };
+type FreeDCal = { axes: "freedtracker" | "xyz-zup" | "xyz-yup" | "unreal"; flipPan: boolean; flipTilt: boolean; flipSide: boolean; swapTR: boolean; unit: number; map?: AxisMap };
+// Which FreeD field (and sign) is the phone's tilt-up, turn-right and lean-right, learned by the axis check.
+type Field = "pan" | "tilt" | "roll";
+type AxisMap = { tilt: [Field, number]; pan: [Field, number]; roll: [Field, number] };
 const FREED_DEFAULT: FreeDCal = { axes: "freedtracker", flipPan: false, flipTilt: false, flipSide: false, swapTR: true, unit: 1 };
 const freedCal: FreeDCal = (() => {
   try {
@@ -436,15 +506,25 @@ function freedToPose(m: FreeDMsg): [Vec3, Quat] {
     : freedCal.axes === "xyz-yup" ? [x * side, y, z] // ARKit-style already
     : freedCal.axes === "unreal" ? [y * side, z, -x] // X forward, Y right, Z up
     : [x * side, z, -y]; // X right, Y forward, Z up (FreeD default)
-  // Held in portrait, FREED Tracker's "tilt" and "roll" fields come out swapped (Ramith confirmed live).
-  const tiltIn = freedCal.swapTR ? m.roll : m.tilt, rollIn = freedCal.swapTR ? m.tilt : m.roll;
-  const panV = fPan(m.pan), tiltV = fTilt(tiltIn), rollV = fRoll(rollIn);
-  freedStuck = Math.abs(m.tilt) >= 255.9 || Math.abs(m.pan) >= 255.9 ? freedStuck + 1 : 0;
-  const pan = (freedCal.flipPan ? 1 : -1) * (panV ?? 0);
-  const tilt = (freedCal.flipTilt ? -1 : 1) * (tiltV ?? 0);
+  const mp = freedCal.map;
+  let tiltIn: number, panIn: number, rollIn: number; // tilt up +, turn right +, lean right +
+  if (mp) {
+    const v = (e: [Field, number]) => (Math.abs(m[e[0]]) >= 255.9 ? m[e[0]] : e[1] * m[e[0]]);
+    (tiltIn = v(mp.tilt)), (panIn = v(mp.pan)), (rollIn = v(mp.roll));
+  } else {
+    // Held in portrait, FREED Tracker's "tilt" and "roll" fields come out swapped.
+    tiltIn = (freedCal.flipTilt ? -1 : 1) * (freedCal.swapTR ? m.roll : m.tilt);
+    rollIn = -(freedCal.swapTR ? m.tilt : m.roll);
+    panIn = (freedCal.flipPan ? -1 : 1) * m.pan;
+  }
+  const panV = fPan(panIn), tiltV = fTilt(tiltIn), rollV = fRoll(rollIn);
+  freedStuck = Math.abs(m.tilt) >= 255.9 || Math.abs(m.pan) >= 255.9 || Math.abs(m.roll) >= 255.9 ? freedStuck + 1 : 0;
+  const pan = -(panV ?? 0); // three.js: turning right is negative yaw
+  const tilt = tiltV ?? 0;
+  const roll = -(rollV ?? 0); // three.js: leaning right is negative roll
   // Held in portrait, FREED Tracker's pan is the middle Euler angle (it tops out at ±90 and roll swings
   // there), so tilt is applied outermost. Other FreeD sources use the usual pan-tilt-roll order.
-  fe.set(d2r(tilt), d2r(pan), d2r(rollV ?? 0), freedCal.axes === "freedtracker" ? "XYZ" : "YXZ");
+  fe.set(d2r(tilt), d2r(pan), d2r(roll), freedCal.axes === "freedtracker" ? "XYZ" : "YXZ");
   fq.setFromEuler(fe);
   return [p, [fq.x, fq.y, fq.z, fq.w]];
 }
@@ -893,7 +973,7 @@ $("t-rec").onclick = () => (recording ? stopRec() : startRec());
 $("t-mark").onclick = () => setMark();
 $("t-cal").onclick = () => startCalibration();
 $("t-flip").onclick = () => (toggleFlip(), toast(flipped ? "Scan flipped" : "Scan unflipped"));
-$("cal-cancel").onclick = () => (cal && cal.step === 4 ? finishCalibration() : ((cal = null), ($("cal").hidden = true)));
+$("cal-cancel").onclick = () => axisCal ? ((axisCal = null), ($("cal").hidden = true)) : (cal && cal.step === 4 ? finishCalibration() : ((cal = null), ($("cal").hidden = true)));
 $("cal-reset").onclick = () => resetCalibration();
 $("log-save").onclick = () => saveTrackLog();
 $<HTMLInputElement>("t-lens").oninput = (e) => setLens(+(e.target as HTMLInputElement).value);
@@ -912,10 +992,17 @@ calPan.checked = freedCal.flipPan;
 calTilt.checked = freedCal.flipTilt;
 calSide.checked = freedCal.flipSide;
 calSwap.checked = freedCal.swapTR;
-const saveCal = () => {
+function saveFreedCal() {
+  try { localStorage.setItem("pfs.freed2", JSON.stringify(freedCal)); } catch {}
+  calPan.checked = freedCal.flipPan;
+  calTilt.checked = freedCal.flipTilt;
+  calSwap.checked = freedCal.swapTR;
+}
+const saveCal = (e?: Event) => {
+  if (e && e.target !== calAxes && e.target !== calSide && e.target !== calUnit) delete freedCal.map; // manual rotation override
   Object.assign(freedCal, { axes: calAxes.value, flipPan: calPan.checked, flipTilt: calTilt.checked, flipSide: calSide.checked, swapTR: calSwap.checked, unit: +calUnit.value });
   resetFreedFilters();
-  try { localStorage.setItem("pfs.freed2", JSON.stringify(freedCal)); } catch {}
+  saveFreedCal();
   if (arLive()) setMark(true);
 };
 calAxes.onchange = calPan.onchange = calTilt.onchange = calSide.onchange = calSwap.onchange = calUnit.onchange = saveCal;
@@ -1079,6 +1166,7 @@ renderer.setAnimationLoop(() => {
   }
 
   tickCalibration();
+  tickAxisCheck();
   renderer.render(scene, camera);
   drawOverlay();
 
